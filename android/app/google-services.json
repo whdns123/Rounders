@@ -1,0 +1,170 @@
+{
+  "project_info": {
+    "project_number": "954180373576",
+    "project_id": "roundus-c5f22",
+    "storage_bucket": "roundus-c5f22.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954180373576:android:229ecf1b8d180936be9c7d",
+        "android_client_info": {
+          "package_name": "com.example.rounders"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhkjXFEUjDeykqm1hE_as4QFGn11jOGxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "954180373576-mp22o3kejhq5n1mlglbbtg5shig7ech9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.roundusGame"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954180373576:android:2ca695fe9d2f579ebe9c7d",
+        "android_client_info": {
+          "package_name": "com.example.roundus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "954180373576-krlh3djfij1q2755j3n2p4f7plrkqvvq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.roundus",
+            "certificate_hash": "9b17ee6f303826dda9aab45ff30a4b36f4bb6247"
+          }
+        },
+        {
+          "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhkjXFEUjDeykqm1hE_as4QFGn11jOGxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "954180373576-mp22o3kejhq5n1mlglbbtg5shig7ech9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.roundusGame"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954180373576:android:b0b18bd502cc1058be9c7d",
+        "android_client_info": {
+          "package_name": "com.example.roundus_game"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "954180373576-cmv1q4t3digg7j0kcs2agf6ho1k63g47.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.roundus_game",
+            "certificate_hash": "9b17ee6f303826dda9aab45ff30a4b36f4bb6247"
+          }
+        },
+        {
+          "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhkjXFEUjDeykqm1hE_as4QFGn11jOGxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "954180373576-mp22o3kejhq5n1mlglbbtg5shig7ech9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.roundusGame"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954180373576:android:825b551d7bf481c1be9c7d",
+        "android_client_info": {
+          "package_name": "rounds.game.metting"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhkjXFEUjDeykqm1hE_as4QFGn11jOGxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "954180373576-qe9l662lno1gp7ucsh97mren5fi7m4m3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "954180373576-mp22o3kejhq5n1mlglbbtg5shig7ech9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.roundusGame"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
