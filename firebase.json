@@ -1,1 +1,45 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"roundus-c5f22","appId":"1:954180373576:android:229ecf1b8d180936be9c7d","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"roundus-c5f22","appId":"1:954180373576:ios:a7da5e3464670d5dbe9c7d","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"roundus-c5f22","configurations":{"android":"1:954180373576:android:229ecf1b8d180936be9c7d","ios":"1:954180373576:ios:a7da5e3464670d5dbe9c7d","macos":"1:954180373576:ios:a7da5e3464670d5dbe9c7d","web":"1:954180373576:web:4131b1bc6eb01576be9c7d","windows":"1:954180373576:web:40cf180d8486bff4be9c7d"}}},"macos":{"default":{"projectId":"roundus-c5f22","appId":"1:954180373576:ios:a7da5e3464670d5dbe9c7d","uploadDebugSymbols":false,"fileOutput":"macos/Runner/GoogleService-Info.plist"}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "roundus-game",
+          "appId": "1:864046346586:android:e07720964f50a87f2a8363",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "roundus-game",
+          "appId": "1:864046346586:ios:a69677ad57c76b4c2a8363",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "roundus-game",
+          "configurations": {
+            "android": "1:864046346586:android:e07720964f50a87f2a8363",
+            "ios": "1:864046346586:ios:a69677ad57c76b4c2a8363",
+            "macos": "1:864046346586:ios:f03550fb7ee108542a8363",
+            "web": "1:864046346586:web:0d2023a6ac26493d2a8363",
+            "windows": "1:864046346586:web:3587299b720646bf2a8363"
+          }
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "roundus-game",
+          "appId": "1:864046346586:ios:f03550fb7ee108542a8363",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

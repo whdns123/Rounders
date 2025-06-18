@@ -1,6 +1,6 @@
 {
-    "name": "rounders",
-    "short_name": "rounders",
+    "name": "roundus",
+    "short_name": "roundus",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

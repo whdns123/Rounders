@@ -45,9 +45,12 @@ class AuthService extends ChangeNotifier {
       }
       rethrow;
     }
-  }  // 이메일/비밀번호 회원가입
+  } // 이메일/비밀번호 회원가입
+
   Future<UserCredential?> registerWithEmail(
-      String email, String password) async {
+    String email,
+    String password,
+  ) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -79,7 +82,8 @@ class AuthService extends ChangeNotifier {
       }
       rethrow;
     }
-  }  // 익명 로그인
+  } // 익명 로그인
+
   Future<UserCredential?> signInAnonymously() async {
     try {
       final credential = await _auth.signInAnonymously();
@@ -117,6 +121,44 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) {
         print('프로필 업데이트 실패: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // 계정 삭제
+  Future<void> deleteAccount(String password) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && user.email != null) {
+        // 사용자 재인증
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        );
+
+        await user.reauthenticateWithCredential(credential);
+
+        // 계정 삭제
+        await user.delete();
+        notifyListeners();
+      }
+    } on FirebaseAuthException catch (e) {
+      if (kDebugMode) {
+        print('계정 삭제 실패: ${e.code}');
+      }
+
+      switch (e.code) {
+        case 'wrong-password':
+          throw '비밀번호가 일치하지 않습니다.';
+        case 'requires-recent-login':
+          throw '보안을 위해 다시 로그인이 필요합니다.';
+        default:
+          throw '계정 삭제에 실패했습니다: ${e.message}';
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('계정 삭제 실패: $e');
       }
       rethrow;
     }

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "rounders" "\0"
+            VALUE "FileDescription", "roundus" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "rounders" "\0"
+            VALUE "InternalName", "roundus" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "rounders.exe" "\0"
-            VALUE "ProductName", "rounders" "\0"
+            VALUE "OriginalFilename", "roundus.exe" "\0"
+            VALUE "ProductName", "roundus" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

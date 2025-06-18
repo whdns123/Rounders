@@ -1,0 +1,183 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/booking_cancellation.dart';
+
+class BookingCancellationService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // 예약 취소 요청
+  Future<String> cancelBooking({
+    required String bookingId,
+    required String userId,
+    required String meetingId,
+    required String reason,
+    String? customReason,
+  }) async {
+    try {
+      // 트랜잭션으로 예약 취소 처리
+      return await _firestore.runTransaction<String>((transaction) async {
+        // 1. 예약 정보 확인
+        DocumentReference bookingRef = _firestore
+            .collection('bookings')
+            .doc(bookingId);
+        DocumentSnapshot bookingSnapshot = await transaction.get(bookingRef);
+
+        if (!bookingSnapshot.exists) {
+          throw Exception('예약 정보를 찾을 수 없습니다.');
+        }
+
+        final bookingData = bookingSnapshot.data() as Map<String, dynamic>;
+        if (bookingData['userId'] != userId) {
+          throw Exception('본인의 예약만 취소할 수 있습니다.');
+        }
+
+        if (bookingData['status'] == 'cancelled') {
+          throw Exception('이미 취소된 예약입니다.');
+        }
+
+        // 2. 취소 정보 생성
+        DocumentReference cancellationRef = _firestore
+            .collection('booking_cancellations')
+            .doc();
+
+        final cancellation = BookingCancellation(
+          id: cancellationRef.id,
+          bookingId: bookingId,
+          userId: userId,
+          meetingId: meetingId,
+          reason: reason,
+          customReason: customReason,
+          cancelledAt: DateTime.now(),
+          status: 'requested',
+          refundAmount: (bookingData['amount'] ?? 0.0).toDouble(),
+          refundStatus: 'pending',
+        );
+
+        // 3. 취소 정보 저장
+        transaction.set(cancellationRef, cancellation.toFirestore());
+
+        // 4. 예약 상태를 취소로 변경
+        transaction.update(bookingRef, {
+          'status': 'cancelled',
+          'cancelledAt': Timestamp.fromDate(DateTime.now()),
+          'cancellationId': cancellationRef.id,
+        });
+
+        // 5. 모임의 현재 참가자 수 감소
+        DocumentReference meetingRef = _firestore
+            .collection('meetings')
+            .doc(meetingId);
+        DocumentSnapshot meetingSnapshot = await transaction.get(meetingRef);
+
+        if (meetingSnapshot.exists) {
+          final meetingData = meetingSnapshot.data() as Map<String, dynamic>;
+          final currentParticipants = meetingData['currentParticipants'] ?? 0;
+
+          transaction.update(meetingRef, {
+            'currentParticipants': (currentParticipants - 1)
+                .clamp(0, double.infinity)
+                .toInt(),
+          });
+        }
+
+        return cancellationRef.id;
+      });
+    } catch (e) {
+      print('Error cancelling booking: $e');
+      rethrow;
+    }
+  }
+
+  // 사용자의 취소 내역 조회
+  Stream<List<BookingCancellation>> getUserCancellations(String userId) {
+    return _firestore
+        .collection('booking_cancellations')
+        .where('userId', isEqualTo: userId)
+        .orderBy('cancelledAt', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => BookingCancellation.fromFirestore(doc))
+              .toList(),
+        );
+  }
+
+  // 특정 예약의 취소 정보 조회
+  Future<BookingCancellation?> getCancellationByBookingId(
+    String bookingId,
+  ) async {
+    try {
+      QuerySnapshot snapshot = await _firestore
+          .collection('booking_cancellations')
+          .where('bookingId', isEqualTo: bookingId)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return BookingCancellation.fromFirestore(snapshot.docs.first);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting cancellation: $e');
+      return null;
+    }
+  }
+
+  // 예약 취소 가능 여부 확인
+  Future<Map<String, dynamic>> checkCancellationPolicy(String bookingId) async {
+    try {
+      // 예약 정보 조회
+      DocumentSnapshot bookingSnapshot = await _firestore
+          .collection('bookings')
+          .doc(bookingId)
+          .get();
+
+      if (!bookingSnapshot.exists) {
+        return {'canCancel': false, 'reason': '예약 정보를 찾을 수 없습니다.'};
+      }
+
+      final bookingData = bookingSnapshot.data() as Map<String, dynamic>;
+
+      if (bookingData['status'] == 'cancelled') {
+        return {'canCancel': false, 'reason': '이미 취소된 예약입니다.'};
+      }
+
+      if (bookingData['status'] == 'completed') {
+        return {'canCancel': false, 'reason': '완료된 예약은 취소할 수 없습니다.'};
+      }
+
+      // 모임 정보 조회
+      DocumentSnapshot meetingSnapshot = await _firestore
+          .collection('meetings')
+          .doc(bookingData['meetingId'])
+          .get();
+
+      if (meetingSnapshot.exists) {
+        final meetingData = meetingSnapshot.data() as Map<String, dynamic>;
+        final scheduledDate = (meetingData['scheduledDate'] as Timestamp)
+            .toDate();
+        final now = DateTime.now();
+
+        // 모임 시작 1시간 전까지 취소 가능
+        final cancellationDeadline = scheduledDate.subtract(
+          const Duration(hours: 1),
+        );
+
+        if (now.isAfter(cancellationDeadline)) {
+          return {'canCancel': false, 'reason': '모임 시작 1시간 전까지만 취소할 수 있습니다.'};
+        }
+
+        return {
+          'canCancel': true,
+          'reason': null,
+          'refundAmount': bookingData['amount'] ?? 0.0,
+          'meetingDate': scheduledDate,
+        };
+      }
+
+      return {'canCancel': false, 'reason': '모임 정보를 찾을 수 없습니다.'};
+    } catch (e) {
+      print('Error checking cancellation policy: $e');
+      return {'canCancel': false, 'reason': '취소 정책 확인 중 오류가 발생했습니다.'};
+    }
+  }
+}

@@ -10,13 +10,27 @@ class Meeting {
   final int currentParticipants;
   final String hostId;
   final String hostName;
-  final int price;
-  final String? imageUrl;
+  final double price;
+  final String? imageUrl; // 기존 호환성 (사용안함)
+  final String? coverImageUrl; // 호스트가 업로드하는 표지 이미지
   final List<String> participants;
   final bool isCompleted;
   final bool hasResults;
   final List<String> imageUrls;
   final String requiredLevel;
+  final bool isActive;
+  // 게임 관련 필드들
+  final String? gameId;
+  final String? venueId; // 장소 ID 추가
+  final String? locationDetail;
+  final String? benefitDescription;
+  final String? additionalNotes;
+  final List<String> tags;
+  final String difficulty;
+  final double rating;
+  final int reviewCount;
+  final int minParticipants;
+  final String status; // recruiting, ongoing, completed
 
   Meeting({
     required this.id,
@@ -30,11 +44,25 @@ class Meeting {
     required this.hostName,
     required this.price,
     this.imageUrl,
+    this.coverImageUrl,
     required this.participants,
     this.isCompleted = false,
     this.hasResults = false,
     this.imageUrls = const [],
     this.requiredLevel = '모두',
+    this.isActive = true,
+    // 게임 관련 필드들
+    this.gameId,
+    this.venueId,
+    this.locationDetail,
+    this.benefitDescription,
+    this.additionalNotes,
+    this.tags = const [],
+    this.difficulty = '모두',
+    this.rating = 0.0,
+    this.reviewCount = 0,
+    this.minParticipants = 1,
+    this.status = 'recruiting',
   });
 
   // Firestore용 변환 메서드
@@ -50,11 +78,26 @@ class Meeting {
       'hostName': hostName,
       'price': price,
       'imageUrl': imageUrl,
+      'coverImageUrl': coverImageUrl,
       'participants': participants,
       'isCompleted': isCompleted,
       'hasResults': hasResults,
       'imageUrls': imageUrls,
       'requiredLevel': requiredLevel,
+      'isActive': isActive,
+      // 게임 관련 필드들
+      'gameId': gameId,
+      'venueId': venueId,
+      'locationDetail': locationDetail,
+      'benefitDescription': benefitDescription,
+      'additionalNotes': additionalNotes,
+      'tags': tags,
+      'difficulty': difficulty,
+      'rating': rating,
+      'reviewCount': reviewCount,
+      'minParticipants': minParticipants,
+      'status': status,
+      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 
@@ -80,13 +123,27 @@ class Meeting {
       currentParticipants: map['currentParticipants'] ?? 0,
       hostId: map['hostId'] ?? '',
       hostName: map['hostName'] ?? '',
-      price: map['price'] ?? 0,
+      price: (map['price'] ?? 0.0).toDouble(),
       imageUrl: map['imageUrl'],
+      coverImageUrl: map['coverImageUrl'],
       participants: List<String>.from(map['participants'] ?? []),
       isCompleted: map['isCompleted'] ?? false,
       hasResults: map['hasResults'] ?? false,
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
       requiredLevel: map['requiredLevel'] ?? '모두',
+      isActive: map['isActive'] ?? true,
+      // 게임 관련 필드들
+      gameId: map['gameId'],
+      venueId: map['venueId'],
+      locationDetail: map['locationDetail'],
+      benefitDescription: map['benefitDescription'],
+      additionalNotes: map['additionalNotes'],
+      tags: List<String>.from(map['tags'] ?? []),
+      difficulty: map['difficulty'] ?? '모두',
+      rating: (map['rating'] ?? 0.0).toDouble(),
+      reviewCount: map['reviewCount'] ?? 0,
+      minParticipants: map['minParticipants'] ?? 1,
+      status: map['status'] ?? 'recruiting',
     );
   }
 
@@ -114,13 +171,27 @@ class Meeting {
       currentParticipants: data['currentParticipants'] ?? 0,
       hostId: data['hostId'] ?? '',
       hostName: data['hostName'] ?? '',
-      price: data['price'] ?? 0,
+      price: (data['price'] ?? 0.0).toDouble(),
       imageUrl: data['imageUrl'],
+      coverImageUrl: data['coverImageUrl'],
       participants: List<String>.from(data['participants'] ?? []),
       isCompleted: data['isCompleted'] ?? false,
       hasResults: data['hasResults'] ?? false,
       imageUrls: List<String>.from(data['imageUrls'] ?? []),
       requiredLevel: data['requiredLevel'] ?? '모두',
+      isActive: data['isActive'] ?? true,
+      // 게임 관련 필드들
+      gameId: data['gameId'],
+      venueId: data['venueId'],
+      locationDetail: data['locationDetail'],
+      benefitDescription: data['benefitDescription'],
+      additionalNotes: data['additionalNotes'],
+      tags: List<String>.from(data['tags'] ?? []),
+      difficulty: data['difficulty'] ?? '모두',
+      rating: (data['rating'] ?? 0.0).toDouble(),
+      reviewCount: data['reviewCount'] ?? 0,
+      minParticipants: data['minParticipants'] ?? 1,
+      status: data['status'] ?? 'recruiting',
     );
   }
 
@@ -137,11 +208,25 @@ class Meeting {
       'hostName': hostName,
       'price': price,
       'imageUrl': imageUrl,
+      'coverImageUrl': coverImageUrl,
       'participants': participants,
       'isCompleted': isCompleted,
       'hasResults': hasResults,
       'imageUrls': imageUrls,
       'requiredLevel': requiredLevel,
+      'isActive': isActive,
+      // 게임 관련 필드들
+      'gameId': gameId,
+      'venueId': venueId, // 누락된 venueId 필드 추가
+      'locationDetail': locationDetail,
+      'benefitDescription': benefitDescription,
+      'additionalNotes': additionalNotes,
+      'tags': tags,
+      'difficulty': difficulty,
+      'rating': rating,
+      'reviewCount': reviewCount,
+      'minParticipants': minParticipants,
+      'status': status,
       'createdAt': FieldValue.serverTimestamp(),
     };
   }
@@ -163,11 +248,24 @@ class Meeting {
       hostName: hostName,
       price: price,
       imageUrl: imageUrl,
+      coverImageUrl: coverImageUrl,
       participants: newParticipants,
       isCompleted: isCompleted,
       hasResults: hasResults,
       imageUrls: imageUrls,
       requiredLevel: requiredLevel,
+      isActive: isActive,
+      // 게임 관련 필드들
+      gameId: gameId,
+      venueId: venueId,
+      locationDetail: locationDetail,
+      benefitDescription: benefitDescription,
+      additionalNotes: additionalNotes,
+      tags: tags,
+      difficulty: difficulty,
+      rating: rating,
+      reviewCount: reviewCount,
+      minParticipants: minParticipants,
     );
   }
 
@@ -188,11 +286,24 @@ class Meeting {
       hostName: hostName,
       price: price,
       imageUrl: imageUrl,
+      coverImageUrl: coverImageUrl,
       participants: newParticipants,
       isCompleted: isCompleted,
       hasResults: hasResults,
       imageUrls: imageUrls,
       requiredLevel: requiredLevel,
+      isActive: isActive,
+      // 게임 관련 필드들
+      gameId: gameId,
+      venueId: venueId,
+      locationDetail: locationDetail,
+      benefitDescription: benefitDescription,
+      additionalNotes: additionalNotes,
+      tags: tags,
+      difficulty: difficulty,
+      rating: rating,
+      reviewCount: reviewCount,
+      minParticipants: minParticipants,
     );
   }
 

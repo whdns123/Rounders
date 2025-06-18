@@ -41,52 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDxUwwOoRUn80R0liZljG8viaFwWNPYZKY',
-    appId: '1:954180373576:web:4131b1bc6eb01576be9c7d',
-    messagingSenderId: '954180373576',
-    projectId: 'roundus-c5f22',
-    authDomain: 'roundus-c5f22.firebaseapp.com',
-    storageBucket: 'roundus-c5f22.firebasestorage.app',
-    measurementId: 'G-CFXSRPG0G6',
+    apiKey: 'AIzaSyDfxNYf8EM6BNXXiTJ1vXdkvtsNVZFVQfE',
+    appId: '1:864046346586:web:0d2023a6ac26493d2a8363',
+    messagingSenderId: '864046346586',
+    projectId: 'roundus-game',
+    authDomain: 'roundus-game.firebaseapp.com',
+    storageBucket: 'roundus-game.firebasestorage.app',
+    measurementId: 'G-6JN70NGGBF',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDhkjXFEUjDeykqm1hE_as4QFGn11jOGxc',
-    appId: '1:954180373576:android:229ecf1b8d180936be9c7d',
-    messagingSenderId: '954180373576',
-    projectId: 'roundus-c5f22',
-    storageBucket: 'roundus-c5f22.firebasestorage.app',
+    apiKey: 'AIzaSyDk1v7_NVW6R2g--y4ZCnVw5ayXDHXpjpM',
+    appId: '1:864046346586:android:e07720964f50a87f2a8363',
+    messagingSenderId: '864046346586',
+    projectId: 'roundus-game',
+    storageBucket: 'roundus-game.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCBS9nPhTJpZQj0dE9xy9EfwFQMiz8v1jY',
-    appId: '1:954180373576:ios:a7da5e3464670d5dbe9c7d',
-    messagingSenderId: '954180373576',
-    projectId: 'roundus-c5f22',
-    storageBucket: 'roundus-c5f22.firebasestorage.app',
-    androidClientId: '954180373576-cmv1q4t3digg7j0kcs2agf6ho1k63g47.apps.googleusercontent.com',
-    iosClientId: '954180373576-6o8aipuhq8vh9rfgs5d4onqe1m42a0gp.apps.googleusercontent.com',
-    iosBundleId: 'com.example.rounders',
+    apiKey: 'AIzaSyBrvlfAUx1TvpcW_X5h8HflIjAuTcL7kzw',
+    appId: '1:864046346586:ios:a69677ad57c76b4c2a8363',
+    messagingSenderId: '864046346586',
+    projectId: 'roundus-game',
+    storageBucket: 'roundus-game.firebasestorage.app',
+    iosBundleId: 'com.example.roundusClean',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCBS9nPhTJpZQj0dE9xy9EfwFQMiz8v1jY',
-    appId: '1:954180373576:ios:a7da5e3464670d5dbe9c7d',
-    messagingSenderId: '954180373576',
-    projectId: 'roundus-c5f22',
-    storageBucket: 'roundus-c5f22.firebasestorage.app',
-    androidClientId: '954180373576-cmv1q4t3digg7j0kcs2agf6ho1k63g47.apps.googleusercontent.com',
-    iosClientId: '954180373576-6o8aipuhq8vh9rfgs5d4onqe1m42a0gp.apps.googleusercontent.com',
-    iosBundleId: 'com.example.rounders',
+    apiKey: 'AIzaSyBrvlfAUx1TvpcW_X5h8HflIjAuTcL7kzw',
+    appId: '1:864046346586:ios:f03550fb7ee108542a8363',
+    messagingSenderId: '864046346586',
+    projectId: 'roundus-game',
+    storageBucket: 'roundus-game.firebasestorage.app',
+    iosBundleId: 'com.example.roundus',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDxUwwOoRUn80R0liZljG8viaFwWNPYZKY',
-    appId: '1:954180373576:web:40cf180d8486bff4be9c7d',
-    messagingSenderId: '954180373576',
-    projectId: 'roundus-c5f22',
-    authDomain: 'roundus-c5f22.firebaseapp.com',
-    storageBucket: 'roundus-c5f22.firebasestorage.app',
-    measurementId: 'G-RWXJ6P4Y66',
+    apiKey: 'AIzaSyDfxNYf8EM6BNXXiTJ1vXdkvtsNVZFVQfE',
+    appId: '1:864046346586:web:3587299b720646bf2a8363',
+    messagingSenderId: '864046346586',
+    projectId: 'roundus-game',
+    authDomain: 'roundus-game.firebaseapp.com',
+    storageBucket: 'roundus-game.firebasestorage.app',
+    measurementId: 'G-3K5RR5GL3C',
   );
+
 }
