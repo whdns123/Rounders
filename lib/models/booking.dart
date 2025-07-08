@@ -92,7 +92,7 @@ class Booking {
   String get statusText {
     switch (status) {
       case BookingStatus.confirmed:
-        return '예약 확정';
+        return '예약 완료';
       case BookingStatus.pending:
         return '승인 대기중';
       case BookingStatus.cancelled:
@@ -100,7 +100,7 @@ class Booking {
       case BookingStatus.completed:
         return '완료';
       case BookingStatus.approved:
-        return '승인됨';
+        return '예약 완료';
       case BookingStatus.rejected:
         return '거절됨';
     }
@@ -115,9 +115,9 @@ class Booking {
       case BookingStatus.cancelled:
         return const Color(0xFFEAEAEA);
       case BookingStatus.completed:
-        return const Color(0xFF4CAF50);
+        return const Color(0xFFF44336);
       case BookingStatus.approved:
-        return const Color(0xFF4CAF50);
+        return const Color(0xFFF44336);
       case BookingStatus.rejected:
         return const Color(0xFFF44336);
     }

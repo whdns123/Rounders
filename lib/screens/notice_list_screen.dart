@@ -29,19 +29,9 @@ class _NoticeListScreenState extends State<NoticeListScreen> {
       });
 
       final notices = await _noticeService.getNotices();
-
-      // 데이터가 없으면 더미 데이터 생성
-      if (notices.isEmpty) {
-        await _noticeService.createDummyNotices();
-        final newNotices = await _noticeService.getNotices();
-        setState(() {
-          _notices = newNotices;
-        });
-      } else {
-        setState(() {
-          _notices = notices;
-        });
-      }
+      setState(() {
+        _notices = notices;
+      });
     } catch (e) {
       ScaffoldMessenger.of(
         context,

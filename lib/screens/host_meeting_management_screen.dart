@@ -103,14 +103,9 @@ class _HostMeetingManagementScreenState
         ),
         centerTitle: true,
       ),
-      body: Stack(
-        children: [
-          // 메인 콘텐츠
-          _buildMainContent(),
-          // 플러스 버튼 (하단 고정)
-          Positioned(right: 16, bottom: 16, child: _buildCreateMeetingButton()),
-        ],
-      ),
+      body: _buildMainContent(),
+      floatingActionButton: _buildCreateMeetingButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -148,7 +143,7 @@ class _HostMeetingManagementScreenState
         final groupedMeetings = _groupMeetingsByWeek(meetings);
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 80), // 플러스 버튼 공간 확보
+          padding: const EdgeInsets.only(bottom: 16), // 기본 여백만 유지
           child: Column(
             children: groupedMeetings.entries.map((entry) {
               return _buildWeekSection(entry.key, entry.value);
@@ -308,7 +303,7 @@ class _HostMeetingManagementScreenState
                             const SizedBox(width: 2),
                             Expanded(
                               child: Text(
-                                '${meeting.location} • ${_formatDateTime(meeting.scheduledDate)}',
+                                '${_extractCafeName(meeting.location)} ${_formatDateTime(meeting.scheduledDate)}',
                                 style: const TextStyle(
                                   color: Color(0xFFD6D6D6),
                                   fontSize: 12,
@@ -372,28 +367,52 @@ class _HostMeetingManagementScreenState
     final hour = dateTime.hour;
     final minute = dateTime.minute;
 
-    return '${dateTime.month}.${dateTime.day}($weekday) $hour시 ${minute.toString().padLeft(2, '0')}분';
+    return '${dateTime.month}.${dateTime.day}($weekday)${hour}시${minute.toString().padLeft(2, '0')}분';
+  }
+
+  // 카페 이름만 추출하는 함수
+  String _extractCafeName(String? location) {
+    if (location == null || location.isEmpty) return '장소 미정';
+
+    // 일반적인 카페 이름 패턴들
+    final cafePatterns = [
+      RegExp(r'(.*?)\s*\(.*?\)'), // "카페명 (주소)" 형식
+      RegExp(r'(.*?)\s*-\s*.*'), // "카페명 - 주소" 형식
+      RegExp(r'(.*?)\s+[가-힣]+시\s+[가-힣]+구'), // "카페명 서울시 강남구..." 형식
+      RegExp(r'(.*?)\s+\d+'), // "카페명 123" (번지수) 형식
+    ];
+
+    for (final pattern in cafePatterns) {
+      final match = pattern.firstMatch(location);
+      if (match != null && match.group(1)?.trim().isNotEmpty == true) {
+        return match.group(1)!.trim();
+      }
+    }
+
+    // 패턴이 맞지 않으면 첫 번째 단어들만 사용
+    final words = location.split(' ');
+    if (words.length >= 2) {
+      return '${words[0]} ${words[1]}';
+    }
+
+    return words.isNotEmpty ? words[0] : '장소 미정';
   }
 
   Widget _buildCreateMeetingButton() {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF44336),
-        borderRadius: BorderRadius.circular(4),
+    return FloatingActionButton(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HostCreateMeetingScreen(),
+          ),
+        );
+      },
+      backgroundColor: const Color(0xFFF44336),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4), // 네모난 모양 유지
       ),
-      child: IconButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const HostCreateMeetingScreen(),
-            ),
-          );
-        },
-        icon: const Icon(Icons.add, color: Color(0xFFF5F5F5), size: 24),
-      ),
+      child: const Icon(Icons.add, color: Color(0xFFF5F5F5), size: 24),
     );
   }
 }

@@ -25,6 +25,15 @@ class WebLauncherService {
     await _launchUrl(context, _hostSupportUrl, '호스트 지원');
   }
 
+  // 일반 URL 열기 (개인정보 처리방침 등)
+  static Future<void> openUrl(
+    BuildContext context,
+    String url, {
+    String? pageName,
+  }) async {
+    await _launchUrl(context, url, pageName ?? 'External Link');
+  }
+
   // 공통 URL 실행 메서드
   static Future<void> _launchUrl(
     BuildContext context,

@@ -6,17 +6,35 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/meeting.dart';
 import '../models/game.dart';
 import '../models/venue.dart';
+import '../models/booking.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/favorites_provider.dart';
+import '../services/booking_service.dart';
+import '../services/review_service.dart';
 import 'booking_payment_screen.dart';
 import 'review_list_screen.dart';
+import 'host_review_list_screen.dart';
+import 'meeting_participants_screen.dart';
+import 'host_create_meeting_screen.dart';
+import 'favorites_screen.dart';
+import '../widgets/common_modal.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   final String meetingId;
+  final bool isPreview;
+  final Meeting? previewMeeting;
+  final Game? previewGame;
+  final Venue? previewVenue;
 
-  const MeetingDetailScreen({Key? key, required this.meetingId})
-    : super(key: key);
+  const MeetingDetailScreen({
+    Key? key,
+    required this.meetingId,
+    this.isPreview = false,
+    this.previewMeeting,
+    this.previewGame,
+    this.previewVenue,
+  }) : super(key: key);
 
   @override
   State<MeetingDetailScreen> createState() => _MeetingDetailScreenState();
@@ -30,6 +48,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
   Game? _game;
   Venue? _venue;
   bool _hasApplied = false;
+  Booking? _userBooking; // 사용자의 예약 정보
+  bool _isCheckingStatus = false; // 상태 확인 중
   late TabController _tabController;
   bool _showAllMenus = false; // 메뉴 더보기 상태
   late FirestoreService _firestoreService;
@@ -41,7 +61,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
     _tabController.addListener(() {
       setState(() {}); // 탭 변경 시 UI 업데이트
     });
-    _loadMeetingDetails();
+
+    if (widget.isPreview) {
+      _loadPreviewData();
+    } else {
+      _loadMeetingDetails();
+    }
   }
 
   @override
@@ -56,6 +81,22 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
     super.dispose();
   }
 
+  void _loadPreviewData() {
+    setState(() {
+      _isLoading = true;
+    });
+
+    // 미리보기 데이터 설정
+    setState(() {
+      _meeting = widget.previewMeeting;
+      _game = widget.previewGame;
+      _venue = widget.previewVenue;
+      _hasApplied = false; // 미리보기에서는 신청 상태 없음
+      _userBooking = null;
+      _isLoading = false;
+    });
+  }
+
   Future<void> _loadMeetingDetails() async {
     setState(() {
       _isLoading = true;
@@ -66,9 +107,37 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
         context,
         listen: false,
       );
-      final meeting = await firestoreService.getMeetingById(widget.meetingId);
+      var meeting = await firestoreService.getMeetingById(widget.meetingId);
 
       if (meeting != null) {
+        print('📋 Meeting 데이터 로드 완료:');
+        print('📋 ID: ${meeting.id}');
+        print('📋 Title: ${meeting.title}');
+        print('📋 benefitDescription: ${meeting.benefitDescription}');
+        print('📋 gameId: ${meeting.gameId}');
+
+        // 모임 상태 자동 확인 및 업데이트
+        try {
+          final updatedStatus = await firestoreService
+              .checkAndUpdateMeetingStatus(meeting.id);
+          if (updatedStatus != meeting.status) {
+            print('🔄 모임 상태 자동 업데이트: ${meeting.status} -> $updatedStatus');
+            // 업데이트된 모임 정보 다시 가져오기
+            final updatedMeeting = await firestoreService.getMeetingById(
+              widget.meetingId,
+            );
+            if (updatedMeeting != null) {
+              meeting = updatedMeeting;
+              print('📋 업데이트된 모임 정보 적용 완료: ${meeting.status}');
+            }
+          }
+        } catch (e) {
+          print('⚠️ 모임 상태 자동 업데이트 중 오류: $e');
+        }
+
+        // meeting이 null이 아님을 재확인
+        if (meeting == null) return;
+
         setState(() {
           _meeting = meeting;
         });
@@ -186,18 +255,47 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
       context,
       listen: false,
     );
+    final bookingService = BookingService();
 
     if (authService.currentUser == null || _meeting == null) return;
 
+    setState(() {
+      _isCheckingStatus = true;
+    });
+
     try {
+      final userId = authService.currentUser!.uid;
+
+      // 1. 예약 상태 확인 (bookings 컬렉션)
+      final userBooking = await bookingService.getUserBookingForMeeting(
+        userId,
+        _meeting!.id,
+      );
+
+      // 2. 신청 상태 확인 (applications 컬렉션)
       final applicationStatus = await firestoreService.getUserApplicationStatus(
         _meeting!.id,
       );
+
       setState(() {
-        _hasApplied = applicationStatus != null; // 신청 상태가 있으면 신청한 것으로 처리
+        _userBooking = userBooking;
+        _hasApplied = applicationStatus != null || userBooking != null;
       });
+
+      print('📋 예약/신청 상태 확인 완료:');
+      print('  - 예약 상태: ${userBooking?.statusText ?? "없음"}');
+      print('  - 신청 상태: ${applicationStatus ?? "없음"}');
+
+      // 거절된 예약이 있는 경우 특별 처리
+      if (userBooking?.status == BookingStatus.rejected) {
+        print('  - ⚠️ 예약이 거절되었습니다');
+      }
     } catch (e) {
-      print('신청 상태 확인 실패: $e');
+      print('❌ 신청/예약 상태 확인 실패: $e');
+    } finally {
+      setState(() {
+        _isCheckingStatus = false;
+      });
     }
   }
 
@@ -221,13 +319,343 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
     );
   }
 
+  // 예약 취소 함수
+  Future<void> _cancelBooking() async {
+    if (_userBooking == null) return;
+
+    // 확인 다이얼로그 표시
+    final shouldCancel = await ModalUtils.showConfirmModal(
+      context: context,
+      title: '예약 취소',
+      description: '정말로 예약을 취소하시겠습니까?\n취소된 예약은 되돌릴 수 없습니다.',
+      confirmText: '취소하기',
+      cancelText: '아니요',
+      isDestructive: true,
+    );
+
+    if (shouldCancel != true) return;
+
+    try {
+      setState(() {
+        _isCheckingStatus = true;
+      });
+
+      final bookingService = BookingService();
+      await bookingService.cancelBooking(_userBooking!.id);
+
+      // 상태 새로고침
+      await _checkApplicationStatus();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('예약이 취소되었습니다.'),
+            backgroundColor: Color(0xFF2E2E2E),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('예약 취소에 실패했습니다: $e'),
+            backgroundColor: const Color(0xFFF44336),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isCheckingStatus = false;
+      });
+    }
+  }
+
   void _navigateToReviews() {
-    if (_game != null) {
+    if (_meeting != null) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => ReviewListScreen(gameId: _game!.id),
+          builder: (context) => HostReviewListScreen(
+            hostId: _meeting!.hostId,
+            hostName: _meeting!.hostName,
+          ),
         ),
       );
+    }
+  }
+
+  void _navigateToParticipantManagement() {
+    if (_meeting != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => MeetingParticipantsScreen(meeting: _meeting!),
+        ),
+      );
+    }
+  }
+
+  void _navigateToEditMeeting() {
+    if (_meeting != null && _game != null && _venue != null) {
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute(
+              builder: (context) => HostCreateMeetingScreen(
+                isEditMode: true,
+                meetingToEdit: _meeting!,
+                gameToEdit: _game!,
+                venueToEdit: _venue!,
+              ),
+            ),
+          )
+          .then((result) {
+            // 수정 완료 후 돌아왔을 때 데이터 새로고침
+            if (result == true) {
+              _loadMeetingDetails();
+            }
+          });
+    }
+  }
+
+  void _showMeetingManagementDialog() {
+    if (_meeting == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF2E2E2E), // 피그마: #2e2e2e
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 핸들 바 (피그마 디자인과 정확히 일치)
+            Container(
+              margin: const EdgeInsets.only(top: 14),
+              width: 80, // 피그마: 80px
+              height: 6, // 피그마: 6px
+              decoration: BoxDecoration(
+                color: const Color(0xFF8C8C8C), // 피그마: #8c8c8c
+                borderRadius: BorderRadius.circular(16), // 피그마: 16px
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 헤더 영역 (제목 + 부제목)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 24), // 좌우 24px 마진
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 제목
+                  Text(
+                    '모임 관리',
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      color: Color(0xFFFFFFFF), // 피그마: #ffffff
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700, // Bold
+                      fontFamily: 'Pretendard',
+                      height: 1.4, // 28px lineHeight / 20px fontSize
+                    ),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  // 부제목
+                  Text(
+                    '모임 : ${_meeting!.title}',
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      color: Color(0xFFA0A0A0), // 피그마: #a0a0a0
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600, // SemiBold
+                      fontFamily: 'Pretendard',
+                      height: 1.43, // 20px lineHeight / 14px fontSize
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 옵션 리스트
+            Column(
+              children: [
+                _buildBottomSheetOption(
+                  icon: Icons.edit,
+                  title: '모임 수정',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToEditMeeting();
+                  },
+                ),
+
+                const SizedBox(height: 14), // 프레임 간 간격
+
+                _buildBottomSheetOption(
+                  icon: Icons.stop_circle,
+                  title: '모임 종료',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _showEndMeetingConfirmDialog();
+                  },
+                ),
+
+                const SizedBox(height: 14), // 프레임 간 간격
+
+                _buildBottomSheetOption(
+                  icon: Icons.delete,
+                  title: '모임 삭제',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _showDeleteMeetingConfirmDialog();
+                  },
+                  isDestructive: true,
+                ),
+              ],
+            ),
+
+            // 하단 여백 (Safe Area)
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomSheetOption({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24), // 좌우 24px 마진
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8), // 피그마: 8px
+        child: Container(
+          width: double.infinity, // 전체 너비 사용
+          height: 52, // 피그마: 52px 높이
+          decoration: BoxDecoration(
+            color: const Color(0xFF3C3C3C), // 피그마: #3c3c3c
+            borderRadius: BorderRadius.circular(8), // 피그마: 8px
+          ),
+          child: Row(
+            children: [
+              // 아이콘 영역 (44x44) - 정확한 위치
+              Container(
+                width: 44,
+                height: 44,
+                margin: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon,
+                  color: isDestructive
+                      ? const Color(0xFFF44336)
+                      : const Color(0xFFF5F5F5), // 피그마: #f5f5f5
+                  size: 24,
+                ),
+              ),
+
+              // 텍스트 - 아이콘 바로 옆에서 시작
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 16),
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: isDestructive
+                          ? const Color(0xFFF44336)
+                          : const Color(0xFFF5F5F5), // 피그마: #f5f5f5
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700, // Bold
+                      fontFamily: 'Pretendard',
+                      height: 1.5, // 24px lineHeight / 16px fontSize
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEndMeetingConfirmDialog() async {
+    final confirmed = await ModalUtils.showConfirmModal(
+      context: context,
+      title: '모임 종료',
+      description: '모임을 종료하시겠습니까?\n종료된 모임은 더 이상 신청을 받지 않습니다.',
+      confirmText: '종료',
+      cancelText: '취소',
+      isDestructive: true,
+    );
+
+    if (confirmed == true) {
+      _endMeeting();
+    }
+  }
+
+  Future<void> _showDeleteMeetingConfirmDialog() async {
+    final confirmed = await ModalUtils.showConfirmModal(
+      context: context,
+      title: '모임 삭제',
+      description: '정말로 모임을 삭제하시겠습니까?\n삭제된 모임은 복구할 수 없습니다.',
+      confirmText: '삭제',
+      cancelText: '취소',
+      isDestructive: true,
+    );
+
+    if (confirmed == true) {
+      _deleteMeeting();
+    }
+  }
+
+  Future<void> _endMeeting() async {
+    try {
+      await _firestoreService.updateMeetingStatus(
+        widget.meetingId,
+        'completed',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('모임이 종료되었습니다.')));
+        _loadMeetingDetails(); // 상태 새로고침
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('모임 종료에 실패했습니다: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteMeeting() async {
+    try {
+      await _firestoreService.deleteMeeting(widget.meetingId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('모임이 삭제되었습니다.')));
+        Navigator.of(context).pop(); // 이전 화면으로 돌아가기
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('모임 삭제에 실패했습니다: $e')));
+      }
     }
   }
 
@@ -343,10 +771,10 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                 ),
               ),
               // Title
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '모임 상세',
-                  style: TextStyle(
+                  widget.isPreview ? '미리 보기' : '모임 상세',
+                  style: const TextStyle(
                     fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
@@ -355,44 +783,28 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                   textAlign: TextAlign.center,
                 ),
               ),
-              // Test Button (Debug용)
-              if (_meeting?.gameId == null)
+
+              // Favorites List Button (미리보기 모드에서는 숨김)
+              if (!widget.isPreview)
                 SizedBox(
                   width: 44,
                   height: 44,
                   child: IconButton(
-                    onPressed: _applyTestGameData,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const FavoritesScreen(),
+                        ),
+                      );
+                    },
                     icon: const Icon(
-                      Icons.bug_report,
-                      color: Colors.orange,
-                      size: 20,
+                      Icons.favorite_border,
+                      color: Colors.white,
+                      size: 24,
                     ),
                   ),
                 ),
-
-              // Favorite Button
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: Consumer<FavoritesProvider>(
-                  builder: (context, favoritesProvider, child) {
-                    final isFavorite = favoritesProvider.isFavorite(
-                      widget.meetingId,
-                    );
-                    return IconButton(
-                      onPressed: () =>
-                          favoritesProvider.toggleFavorite(widget.meetingId),
-                      icon: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: isFavorite
-                            ? const Color(0xFFF44336)
-                            : Colors.white,
-                        size: 24,
-                      ),
-                    );
-                  },
-                ),
-              ),
             ],
           ),
         ),
@@ -527,27 +939,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
               const SizedBox(width: 12),
               GestureDetector(
                 onTap: () => _navigateToReviews(),
-                child: Row(
-                  children: [
-                    const Icon(Icons.star, size: 10, color: Color(0xFFD6D6D6)),
-                    const SizedBox(width: 1),
-                    Text(
-                      '${_game?.rating ?? 4.5}(${_game?.reviewCount ?? 20})',
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w500,
-                        fontSize: 12,
-                        color: Color(0xFFD6D6D6),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 12,
-                      color: Color(0xFFD6D6D6),
-                    ),
-                  ],
-                ),
+                child: _buildHostRatingWidget(),
               ),
             ],
           ),
@@ -627,13 +1019,13 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
           if (_game != null) _buildGameIntroCard(),
           if (_game != null) const SizedBox(height: 16),
 
-          // Time Table Card
-          if (_game?.timeTable.isNotEmpty == true) _buildTimeTableCard(),
-          if (_game?.timeTable.isNotEmpty == true) const SizedBox(height: 16),
+          // Time Table Card - 게임 규칙이 없어도 자동 생성 타임테이블 표시
+          if (_game != null) _buildTimeTableCard(),
+          if (_game != null) const SizedBox(height: 16),
 
-          // Benefits Card
-          if (_game?.benefits.isNotEmpty == true) _buildBenefitsCard(),
-          if (_game?.benefits.isNotEmpty == true) const SizedBox(height: 16),
+          // Benefits Card - 게임이 있으면 항상 표시 (기본 메시지 포함)
+          if (_game != null) _buildBenefitsCard(),
+          if (_game != null) const SizedBox(height: 16),
 
           // Target Audience Card - 피그마 디자인 적용
           if (_game?.targetAudience.isNotEmpty == true)
@@ -1179,7 +1571,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
   }
 
   Widget _buildGameSubtitleCard() {
-    return Container(
+    return SizedBox(
       width: double.infinity,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1296,11 +1688,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                 bottom: index < timeTableItems.length - 1 ? 16 : 0,
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Time
                   SizedBox(
-                    width: 36,
+                    width: 48,
                     child: Text(
                       item['time']!,
                       style: const TextStyle(
@@ -1308,13 +1700,13 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                         fontWeight: FontWeight.w400,
                         fontSize: 14,
                         color: Color(0xFFD6D6D6),
+                        height: 1.0,
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   // Timeline Dot
                   Container(
-                    margin: const EdgeInsets.only(top: 7),
                     width: 6,
                     height: 6,
                     decoration: const BoxDecoration(
@@ -1332,6 +1724,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                         fontWeight: FontWeight.w400,
                         fontSize: 14,
                         color: Color(0xFFD6D6D6),
+                        height: 1.0,
                       ),
                     ),
                   ),
@@ -1447,6 +1840,44 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
   }
 
   Widget _buildBenefitsCard() {
+    // 호스트가 입력한 베테핏과 게임 기본 베테핏을 모두 수집
+    List<String> allBenefits = [];
+
+    print('🎁 베테핏 카드 빌드 시작');
+    print('🎁 Meeting benefitDescription: ${_meeting?.benefitDescription}');
+    print('🎁 Meeting description: ${_meeting?.description}');
+    print('🎁 Game description: ${_game?.description}');
+    print('🎁 Game benefits: ${_game?.benefits}');
+
+    // 1. 호스트가 입력한 베테핏 (benefitDescription 우선)
+    if (_meeting?.benefitDescription?.isNotEmpty == true) {
+      allBenefits.add(_meeting!.benefitDescription!);
+      print(
+        '🎁 호스트 베테핏(benefitDescription) 추가: ${_meeting!.benefitDescription}',
+      );
+    }
+    // 2. description 필드에서 베테핏 확인 (게임 기본 description과 다르면 호스트 입력으로 간주)
+    else if (_meeting?.description.isNotEmpty == true &&
+        _game?.description != null &&
+        _meeting!.description != _game!.description) {
+      allBenefits.add(_meeting!.description);
+      print('🎁 호스트 베테핏(description) 추가: ${_meeting!.description}');
+    }
+
+    // 3. 게임의 기본 베테핏들
+    if (_game?.benefits.isNotEmpty == true) {
+      allBenefits.addAll(_game!.benefits);
+      print('🎁 게임 베테핏 추가: ${_game!.benefits}');
+    }
+
+    print('🎁 전체 베테핏 목록: $allBenefits');
+
+    // 베테핏이 하나도 없으면 기본 메시지 표시
+    if (allBenefits.isEmpty) {
+      print('🎁 베테핏이 없어서 기본 메시지 사용');
+      allBenefits.add('게임 플레이를 통한 즐거운 시간과 새로운 인연을 만나보세요!');
+    }
+
     return SizedBox(
       width: double.infinity,
       child: Column(
@@ -1466,7 +1897,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
           // Benefits Image (배경 위 텍스트)
           Stack(
             children: [
-              _buildSingleGameImage(index: 3),
+              _buildSingleGameImage(index: 3), // 참여혜택 배경 이미지
               Container(
                 width: double.infinity,
                 height: 218,
@@ -1484,7 +1915,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      _game!.benefits.first,
+                      allBenefits.first,
                       style: const TextStyle(
                         fontFamily: 'Pretendard',
                         fontWeight: FontWeight.w600,
@@ -1501,9 +1932,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
           ),
           const SizedBox(height: 12),
           // Additional Benefits
-          if (_game!.benefits.length > 1)
+          if (allBenefits.length > 1)
             Text(
-              _game!.benefits.skip(1).join(' '),
+              allBenefits.skip(1).join(' • '),
               style: const TextStyle(
                 fontFamily: 'Pretendard',
                 fontWeight: FontWeight.w400,
@@ -1718,22 +2149,40 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
 
     String? imageUrl;
 
+    // 실제 Firestore 필드명에 맞게 이미지 선택
     if (index == 0) {
-      // 대표 게임 이미지의 경우 imageUrl을 우선 사용
+      // 대표 게임 이미지 (imageUrl 또는 gameImage)
       if (_game?.imageUrl.isNotEmpty == true) {
         imageUrl = _game!.imageUrl;
         print("🖼️ index 0: imageUrl 사용 - $imageUrl");
-      } else if (_game?.images != null && _game!.images.isNotEmpty) {
-        imageUrl = _game!.images[0];
-        print("🖼️ index 0: images[0] 사용 - $imageUrl");
       }
-    } else if (_game?.images != null && _game!.images.length > index) {
+    } else if (index == 1) {
+      // 게임 소개 이미지 (gameImage 또는 meetingPlayImage)
+      // Firestore에서 실제 필드를 직접 확인해야 함
+      if (_game?.images != null && _game!.images.length > 1) {
+        imageUrl = _game!.images[1];
+        print("🖼️ index 1: gameImage 계열 사용 - $imageUrl");
+      }
+    } else if (index == 2) {
+      // 시간표 이미지 (roundersPlayImage 또는 meetingPlayImage)
+      if (_game?.images != null && _game!.images.length > 2) {
+        imageUrl = _game!.images[2];
+        print("🖼️ index 2: 시간표 이미지 사용 - $imageUrl");
+      }
+    } else if (index == 3) {
+      // 베테핏 배경 이미지 (benefitImage) ⭐
+      if (_game?.images != null && _game!.images.length > 3) {
+        imageUrl = _game!.images[3];
+        print("🖼️ index 3: benefitImage 사용 - $imageUrl");
+      }
+    }
+
+    // 배열에서 찾지 못하면 일반적인 방법으로 시도
+    if ((imageUrl == null || imageUrl.isEmpty) &&
+        _game?.images != null &&
+        _game!.images.length > index) {
       imageUrl = _game!.images[index];
-      print("🖼️ index $index: images[$index] 사용 - $imageUrl");
-    } else {
-      print(
-        "🖼️ index $index: 사용할 이미지 없음 (images 길이: ${_game?.images.length ?? 0})",
-      );
+      print("🖼️ index $index: images[$index] 폴백 사용 - $imageUrl");
     }
 
     if (imageUrl == null || imageUrl.isEmpty) {
@@ -1774,93 +2223,378 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen>
   }
 
   Widget _buildBottomButtons() {
+    // 미리보기 모드에서는 특별한 하단 UI 표시
+    if (widget.isPreview) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        color: const Color(0xFF111111),
+        child: SafeArea(
+          top: false,
+          child: Container(
+            width: double.infinity,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E2E2E),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Center(
+              child: Text(
+                '📋 미리보기 모드',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                  color: Color(0xFFA0A0A0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final currentUserId = authService.currentUser?.uid;
+
+    // 1. 자신의 모임인지 확인
+    final isOwnMeeting =
+        currentUserId != null && currentUserId == _meeting?.hostId;
+
+    // 🔍 디버그 정보 출력
+    print('🔍 버튼 로직 디버그:');
+    print('  - currentUserId: $currentUserId');
+    print('  - meeting.hostId: ${_meeting?.hostId}');
+    print('  - isOwnMeeting: $isOwnMeeting');
+    print('  - _hasApplied: $_hasApplied');
+    print('  - meeting.status: ${_meeting?.status}');
+
+    // 예약 상태에 따른 버튼 표시 결정
+    final hasBooking =
+        _userBooking != null &&
+        _userBooking!.status != BookingStatus.cancelled &&
+        _userBooking!.status != BookingStatus.rejected; // 거절된 예약은 '예약 없음'으로 처리
+    final isBookingConfirmed =
+        hasBooking &&
+        (_userBooking!.status == BookingStatus.confirmed ||
+            _userBooking!.status == BookingStatus.approved);
+
+    // 거절된 예약이 있는지 확인
+    final isBookingRejected = _userBooking?.status == BookingStatus.rejected;
+    // 대기 중인 예약이 있는지 확인
+    final isBookingPending = _userBooking?.status == BookingStatus.pending;
+
+    print('  - hasBooking: $hasBooking');
+    print('  - isBookingConfirmed: $isBookingConfirmed');
+    print('  - isBookingRejected: $isBookingRejected');
+    print('  - isBookingPending: $isBookingPending');
+
+    // 🚨 호스트가 자신의 모임에 신청한 경우 방지
+    if (isOwnMeeting && (_hasApplied || hasBooking)) {
+      print('⚠️ 호스트가 자신의 모임에 신청한 상태 감지됨. 신청 데이터 정리가 필요할 수 있습니다.');
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       color: const Color(0xFF111111),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Favorite Button
-            Container(
-              width: 111,
-              height: 48,
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFF8C8C8C)),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Consumer<FavoritesProvider>(
-                builder: (context, favoritesProvider, child) {
-                  final isFavorite = favoritesProvider.isFavorite(
-                    widget.meetingId,
-                  );
-                  return TextButton.icon(
-                    onPressed: () =>
-                        favoritesProvider.toggleFavorite(widget.meetingId),
-                    icon: Icon(
-                      isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: const Color(0xFFF5F5F5),
-                      size: 24,
-                    ),
-                    label: const Text(
-                      '찜하기',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 18,
-                        color: Color(0xFFF5F5F5),
-                      ),
-                    ),
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Apply Button
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _hasApplied
-                      ? null
-                      : (_isApplying ? null : _applyToMeeting),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _hasApplied
-                        ? const Color(0xFFC2C2C2)
-                        : const Color(0xFFF44336),
-                    foregroundColor: _hasApplied
-                        ? const Color(0xFF111111)
-                        : const Color(0xFFF5F5F5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    elevation: 0,
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: _isApplying
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Text(
-                          _hasApplied ? '신청 완료' : '참가 신청하기',
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
+            // 호스트용 관리 버튼들
+            if (isOwnMeeting) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _navigateToParticipantManagement(),
+                        icon: const Icon(Icons.people, size: 20),
+                        label: const Text('참가자 관리'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E2E2E),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showMeetingManagementDialog(),
+                        icon: const Icon(Icons.settings, size: 20),
+                        label: const Text('모임 관리'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF44336),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
+            ]
+            // ⚠️ 호스트가 아닌 일반 사용자만 버튼 표시
+            else if (!isOwnMeeting) ...[
+              Row(
+                children: [
+                  // 왼쪽 버튼 (예약 완료 시 예약 취소, 아니면 찜하기)
+                  Container(
+                    width: isBookingConfirmed && _meeting?.status != 'completed'
+                        ? 120
+                        : 111,
+                    height: 52,
+                    child: isBookingConfirmed && _meeting?.status != 'completed'
+                        // 예약 완료 상태일 때 예약 취소 버튼
+                        ? ElevatedButton(
+                            onPressed: _isCheckingStatus
+                                ? null
+                                : _cancelBooking,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: const Color(0xFFF44336),
+                              side: const BorderSide(color: Color(0xFFF44336)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: _isCheckingStatus
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFF44336),
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    '예약 취소',
+                                    style: TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                          )
+                        // 예약 완료가 아닐 때 찜하기 버튼
+                        : Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: const Color(0xFF8C8C8C),
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Consumer<FavoritesProvider>(
+                              builder: (context, favoritesProvider, child) {
+                                final isFavorite = favoritesProvider.isFavorite(
+                                  widget.meetingId,
+                                );
+                                return TextButton.icon(
+                                  onPressed: () => favoritesProvider
+                                      .toggleFavorite(widget.meetingId),
+                                  icon: Icon(
+                                    isFavorite
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    color: const Color(0xFFF5F5F5),
+                                    size: 24,
+                                  ),
+                                  label: const Text(
+                                    '찜하기',
+                                    style: TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 18,
+                                      color: Color(0xFFF5F5F5),
+                                    ),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  // Main Action Button (오른쪽)
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _isCheckingStatus
+                            ? null
+                            : (_meeting?.status == 'completed'
+                                  ? null // 🔧 모임 종료 시 비활성화
+                                  : (isBookingConfirmed
+                                        ? null // 예약 완료 시 비활성화
+                                        : (isBookingPending
+                                              ? null // 승인 대기 중일 때 비활성화
+                                              : _applyToMeeting))), // 미신청 또는 거절된 상태에서 신청 가능
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              (_meeting?.status == 'completed' ||
+                                  isBookingConfirmed ||
+                                  isBookingPending)
+                              ? const Color(0xFFC2C2C2)
+                              : const Color(0xFFF44336),
+                          foregroundColor:
+                              (_meeting?.status == 'completed' ||
+                                  isBookingConfirmed ||
+                                  isBookingPending)
+                              ? const Color(0xFF111111)
+                              : const Color(0xFFF5F5F5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          elevation: 0,
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: _isCheckingStatus
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                _meeting?.status == 'completed'
+                                    ? '모임 종료'
+                                    : (isBookingConfirmed
+                                          ? '예약 완료'
+                                          : (isBookingPending
+                                                ? '승인 대기중'
+                                                : (isBookingRejected
+                                                      ? '다시 신청하기'
+                                                      : '참가 신청하기'))),
+                                style: const TextStyle(
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildHostRatingWidget() {
+    if (_meeting == null) {
+      return Row(
+        children: [
+          const Icon(Icons.star, size: 10, color: Color(0xFFD6D6D6)),
+          const SizedBox(width: 1),
+          const Text(
+            '0.0(0)',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w500,
+              fontSize: 12,
+              color: Color(0xFFD6D6D6),
+            ),
+          ),
+          const SizedBox(width: 2),
+          const Icon(Icons.chevron_right, size: 12, color: Color(0xFFD6D6D6)),
+        ],
+      );
+    }
+
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ReviewService().getHostRatingStats(_meeting!.hostId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Row(
+            children: [
+              const Icon(Icons.star, size: 10, color: Color(0xFFD6D6D6)),
+              const SizedBox(width: 1),
+              const Text(
+                '평가중...',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  color: Color(0xFFD6D6D6),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.chevron_right,
+                size: 12,
+                color: Color(0xFFD6D6D6),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Row(
+            children: [
+              const Icon(Icons.star, size: 10, color: Color(0xFFD6D6D6)),
+              const SizedBox(width: 1),
+              const Text(
+                '0.0(0)',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  color: Color(0xFFD6D6D6),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.chevron_right,
+                size: 12,
+                color: Color(0xFFD6D6D6),
+              ),
+            ],
+          );
+        }
+
+        final stats = snapshot.data!;
+        final averageRating = stats['averageRating'] as double;
+        final totalReviews = stats['totalReviews'] as int;
+
+        return Row(
+          children: [
+            const Icon(Icons.star, size: 10, color: Color(0xFFD6D6D6)),
+            const SizedBox(width: 1),
+            Text(
+              '${averageRating.toStringAsFixed(1)}($totalReviews)',
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+                color: Color(0xFFD6D6D6),
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.chevron_right, size: 12, color: Color(0xFFD6D6D6)),
+          ],
+        );
+      },
     );
   }
 }

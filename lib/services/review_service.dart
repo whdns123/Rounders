@@ -1,9 +1,10 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/review_model.dart';
+import 'firestore_service.dart';
 
 class ReviewService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService();
 
   // 리뷰 작성
   Future<String> createReview(ReviewModel review) async {
@@ -69,19 +70,82 @@ class ReviewService {
     }
   }
 
-  // 사용자가 참여한 모임 중 리뷰 작성 가능한 목록 조회
+  // 호스트별 리뷰 목록 조회
+  Future<List<ReviewModel>> getReviewsByHost(String hostId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('reviews')
+          .where('hostId', isEqualTo: hostId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) => ReviewModel.fromMap(doc.data()))
+          .toList();
+    } catch (e) {
+      throw Exception('호스트 리뷰 목록 조회 실패: $e');
+    }
+  }
+
+  // 호스트의 별점 통계 조회
+  Future<Map<String, dynamic>> getHostRatingStats(String hostId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('reviews')
+          .where('hostId', isEqualTo: hostId)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        return {
+          'averageRating': 0.0,
+          'totalReviews': 0,
+          'ratingCounts': {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+        };
+      }
+
+      final reviews = querySnapshot.docs
+          .map((doc) => ReviewModel.fromMap(doc.data()))
+          .toList();
+
+      final ratingCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+      double totalRating = 0;
+
+      for (final review in reviews) {
+        ratingCounts[review.rating] = (ratingCounts[review.rating] ?? 0) + 1;
+        totalRating += review.rating;
+      }
+
+      final averageRating = totalRating / reviews.length;
+
+      return {
+        'averageRating': averageRating,
+        'totalReviews': reviews.length,
+        'ratingCounts': ratingCounts,
+        'reviews': reviews,
+      };
+    } catch (e) {
+      throw Exception('호스트 별점 통계 조회 실패: $e');
+    }
+  }
+
+  // 사용자가 참여한 완료된 모임 중 리뷰 작성 가능한 목록 조회 (수정됨)
   Future<List<Map<String, dynamic>>> getReviewableMeetings(
     String userId,
   ) async {
     try {
-      // 사용자가 참여한 모임 목록
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      final userData = userDoc.data();
-      final attendedMeetings = List<String>.from(
-        userData?['attendedMeetings'] ?? [],
-      );
+      // 사용자의 모든 예약 목록 (완료된 것과 승인된 것 모두)
+      final bookingsSnapshot = await _firestore
+          .collection('bookings')
+          .where('userId', isEqualTo: userId)
+          .where('status', whereIn: ['completed', 'approved'])
+          .get();
 
-      if (attendedMeetings.isEmpty) return [];
+      if (bookingsSnapshot.docs.isEmpty) return [];
+
+      final allMeetingIds = bookingsSnapshot.docs
+          .map((doc) => doc.data()['meetingId'] as String)
+          .toSet()
+          .toList();
 
       // 이미 리뷰 작성한 모임 목록
       final writtenReviews = await _firestore
@@ -93,30 +157,60 @@ class ReviewService {
           .map((doc) => doc.data()['meetingId'] as String)
           .toSet();
 
-      // 리뷰 작성 가능한 모임 목록
-      final reviewableMeetingIds = attendedMeetings
-          .where((meetingId) => !reviewedMeetingIds.contains(meetingId))
-          .toList();
+      // 모임 정보 확인하여 완료되고 리뷰 작성 가능한 모임들만 수집
+      final List<Map<String, dynamic>> reviewableMeetings = [];
 
-      if (reviewableMeetingIds.isEmpty) return [];
+      for (String meetingId in allMeetingIds) {
+        // 이미 리뷰 작성한 모임은 건너뛰기
+        if (reviewedMeetingIds.contains(meetingId)) {
+          continue;
+        }
 
-      // 모임 정보 가져오기
-      final meetingsQuery = await _firestore
-          .collection('meetings')
-          .where(FieldPath.documentId, whereIn: reviewableMeetingIds)
-          .get();
+        final meetingDoc = await _firestore
+            .collection('meetings')
+            .doc(meetingId)
+            .get();
+        if (meetingDoc.exists) {
+          final data = meetingDoc.data()!;
+          final hasResults = data['hasResults'] ?? false;
+          final isCompleted = data['isCompleted'] ?? false;
+          final scheduledDate = (data['scheduledDate'] as Timestamp?)?.toDate();
+          final title = data['title'] ?? '';
 
-      return meetingsQuery.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'title': data['title'] ?? '',
-          'location': data['location'] ?? '',
-          'date': (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          'imageUrl': data['imageUrl'] ?? '',
-          'participants': List<String>.from(data['participants'] ?? []),
-        };
-      }).toList();
+          // 결과가 있거나, 완료 표시되어 있거나, 예정된 날짜가 지난 경우
+          if (hasResults ||
+              isCompleted ||
+              (scheduledDate != null &&
+                  scheduledDate.isBefore(DateTime.now()))) {
+            // venue 정보 가져오기
+            String locationName = '';
+            final venueId = data['venueId'];
+            if (venueId != null && venueId.isNotEmpty) {
+              try {
+                final venue = await _firestoreService.getVenueById(venueId);
+                locationName = venue?.name ?? data['location'] ?? '';
+              } catch (e) {
+                locationName = data['location'] ?? '';
+              }
+            } else {
+              locationName = data['location'] ?? '';
+            }
+
+            reviewableMeetings.add({
+              'id': meetingDoc.id,
+              'title': title,
+              'location': locationName,
+              'date': scheduledDate ?? DateTime.now(),
+              'imageUrl': data['coverImageUrl'] ?? data['imageUrl'] ?? '',
+              'participants': data['participants'] ?? [],
+              'hostId': data['hostId'] ?? '',
+              'hostName': data['hostName'] ?? '',
+            });
+          }
+        }
+      }
+
+      return reviewableMeetings;
     } catch (e) {
       throw Exception('리뷰 작성 가능한 모임 조회 실패: $e');
     }

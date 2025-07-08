@@ -1,13 +1,18 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <!-- 이미지 업로드를 위한 권한 -->
+    <!-- 이미지 업로드를 위한 권한 (갤러리 전용) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 카메라 권한 제거 (갤러리만 사용) -->
+    <!-- <uses-permission android:name="android.permission.CAMERA"/> -->
     
     <!-- Android 13 이상을 위한 새로운 권한 -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    
+    <!-- 광고 ID 권한 명시적 제거 (라운더스는 광고를 사용하지 않음) -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>
     
     <application
         android:label="roundus"
@@ -20,6 +25,14 @@
         <meta-data
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
+        
+        <!-- Firebase에서 광고 ID 사용 비활성화 -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_ssaid_collection_enabled"
+            android:value="false" />
         
         <activity
             android:name=".MainActivity"

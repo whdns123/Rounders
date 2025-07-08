@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import '../services/firestore_service.dart';
+import '../utils/toast_utils.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -72,6 +73,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 사용자 프로필 초기화 확인
       if (userCredential != null && userCredential.user != null) {
+        // MVP: 이메일 인증 체크 주석처리
+        /*
         // 이메일 인증 확인
         if (!userCredential.user!.emailVerified) {
           setState(() {
@@ -105,6 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await authService.signOut();
           return;
         }
+        */
 
         final firestoreService = Provider.of<FirestoreService>(
           context,
@@ -121,13 +125,17 @@ class _LoginScreenState extends State<LoginScreen> {
         _navigateToHome();
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -148,9 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _loginWithSocial(String provider) {
     // TODO: SNS 로그인 구현
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$provider 로그인 기능은 곧 추가될 예정입니다.')));
+    ToastUtils.showToast(context, '$provider 로그인 기능은 곧 추가될 예정입니다.');
   }
 
   @override
@@ -158,32 +164,29 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF111111),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 56),
+        child: SingleChildScrollView(
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              minHeight:
+                  MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                const SizedBox(height: 120),
+                _buildLogoSection(),
 
-                  // 로고 영역
-                  _buildLogoSection(),
+                const SizedBox(height: 60),
+                _buildEmailLoginSection(),
 
-                  const SizedBox(height: 24),
-
-                  // 로그인 폼
-                  _buildLoginForm(),
-
-                  const SizedBox(height: 80),
-
-                  // SNS 로그인
-                  _buildSocialLogin(),
-
-                  const SizedBox(height: 40),
-                ],
-              ),
+                // SNS 로그인 기능 개발 중 (임시 비활성화)
+                // const SizedBox(height: 60),
+                // _buildSocialLoginSection(),
+                const SizedBox(height: 40),
+              ],
             ),
           ),
         ),
@@ -192,122 +195,119 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildLogoSection() {
-    return Center(
-      child: Container(
-        width: 200,
-        height: 80,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2E2E2E),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Center(
-          child: Text(
-            'ROUNDERS',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              fontSize: 24,
-              color: Color(0xFFEAEAEA),
+    return SizedBox(
+      width: 140,
+      height: 120,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 70,
+            child: Image.asset(
+              'assets/images/login icon@4x.png',
+              width: 80,
+              height: 70,
+              fit: BoxFit.contain,
             ),
           ),
-        ),
+          const SizedBox(height: 16),
+          const Text(
+            'ROUNDUS',
+            style: TextStyle(
+              fontFamily: 'Orbitron',
+              fontWeight: FontWeight.w700,
+              fontSize: 20,
+              color: Color(0xFFFFFFFF),
+              letterSpacing: 0,
+              height: 1.25,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildLoginForm() {
-    return Center(
-      child: Container(
-        width: 328,
-        constraints: const BoxConstraints(maxWidth: 328),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              // 이메일 입력 필드
-              _buildTextField(
-                controller: _emailController,
-                hintText: '이메일',
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '이메일을 입력해주세요.';
-                  }
-                  if (!value.contains('@')) {
-                    return '유효한 이메일 형식이 아닙니다.';
-                  }
-                  return null;
+  Widget _buildEmailLoginSection() {
+    return SizedBox(
+      width: 360,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            _buildTextField(
+              controller: _emailController,
+              hintText: '이메일',
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '이메일을 입력해주세요.';
+                }
+                if (!value.contains('@')) {
+                  return '유효한 이메일 형식이 아닙니다.';
+                }
+                return null;
+              },
+            ),
+
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _passwordController,
+              hintText: '비밀번호',
+              obscureText: !_isPasswordVisible,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                  color: const Color(0xFFA0A0A0),
+                  size: 24,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isPasswordVisible = !_isPasswordVisible;
+                  });
                 },
               ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '비밀번호를 입력해주세요.';
+                }
+                if (value.length < 6) {
+                  return '비밀번호는 6자 이상이어야 합니다.';
+                }
+                return null;
+              },
+            ),
 
-              const SizedBox(height: 12),
-
-              // 비밀번호 입력 필드
-              _buildTextField(
-                controller: _passwordController,
-                hintText: '비밀번호',
-                obscureText: !_isPasswordVisible,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    color: const Color(0xFFA0A0A0),
-                    size: 24,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isPasswordVisible = !_isPasswordVisible;
-                    });
-                  },
+            const SizedBox(height: 16),
+            if (_errorMessage != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 16,
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '비밀번호를 입력해주세요.';
-                  }
-                  if (value.length < 6) {
-                    return '비밀번호는 6자 이상이어야 합니다.';
-                  }
-                  return null;
-                },
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E2E2E),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    color: Color(0xFFF44336),
+                  ),
+                ),
               ),
 
-              const SizedBox(height: 12),
+            if (_errorMessage != null) const SizedBox(height: 16),
 
-              // 에러 메시지
-              if (_errorMessage != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E2E2E),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w500,
-                      fontSize: 12,
-                      color: Color(0xFFF44336),
-                    ),
-                  ),
-                ),
+            _buildLoginButton(),
 
-              if (_errorMessage != null) const SizedBox(height: 12),
-
-              // 로그인 버튼
-              _buildLoginButton(),
-
-              const SizedBox(height: 18),
-
-              // 비밀번호 찾기 | 회원가입
-              _buildBottomLinks(),
-            ],
-          ),
+            const SizedBox(height: 24),
+            _buildTextButtonSection(),
+          ],
         ),
       ),
     );
@@ -322,10 +322,10 @@ class _LoginScreenState extends State<LoginScreen> {
     String? Function(String?)? validator,
   }) {
     return Container(
-      height: 44,
+      height: 52,
       decoration: BoxDecoration(
         color: const Color(0xFF3C3C3C),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: TextFormField(
         controller: controller,
@@ -335,7 +335,7 @@ class _LoginScreenState extends State<LoginScreen> {
         style: const TextStyle(
           fontFamily: 'Pretendard',
           fontWeight: FontWeight.w600,
-          fontSize: 14,
+          fontSize: 16,
           color: Color(0xFFEAEAEA),
         ),
         decoration: InputDecoration(
@@ -343,14 +343,14 @@ class _LoginScreenState extends State<LoginScreen> {
           hintStyle: const TextStyle(
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w600,
-            fontSize: 14,
+            fontSize: 16,
             color: Color(0xFFA0A0A0),
           ),
           suffixIcon: suffixIcon,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 12,
+            horizontal: 16,
+            vertical: 14,
           ),
         ),
       ),
@@ -358,21 +358,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildLoginButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 44,
+    return Container(
+      width: 360,
+      height: 52,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _login,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFF44336),
           foregroundColor: const Color(0xFFF5F5F5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           elevation: 0,
         ),
         child: _isLoading
             ? const SizedBox(
-                height: 20,
-                width: 20,
+                height: 24,
+                width: 24,
                 child: CircularProgressIndicator(
                   color: Color(0xFFF5F5F5),
                   strokeWidth: 2,
@@ -383,16 +383,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                  fontSize: 18,
+                  letterSpacing: 0,
+                  height: 1.5,
                 ),
               ),
       ),
     );
   }
 
-  Widget _buildBottomLinks() {
+  Widget _buildTextButtonSection() {
     return SizedBox(
-      height: 18,
+      width: 360,
+      height: 20,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -403,16 +406,18 @@ class _LoginScreenState extends State<LoginScreen> {
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontWeight: FontWeight.w600,
-                fontSize: 12,
+                fontSize: 14,
                 color: Color(0xFF8C8C8C),
+                letterSpacing: 0,
+                height: 1.5,
               ),
             ),
           ),
           Container(
             width: 1,
-            height: 18,
+            height: 20,
             color: const Color(0xFF8C8C8C),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
+            margin: const EdgeInsets.symmetric(horizontal: 40),
           ),
           GestureDetector(
             onTap: _navigateToSignup,
@@ -421,8 +426,10 @@ class _LoginScreenState extends State<LoginScreen> {
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontWeight: FontWeight.w600,
-                fontSize: 12,
+                fontSize: 14,
                 color: Color(0xFF8C8C8C),
+                letterSpacing: 0,
+                height: 1.5,
               ),
             ),
           ),
@@ -431,8 +438,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialLogin() {
-    return Center(
+  Widget _buildSocialLoginSection() {
+    return SizedBox(
+      width: 280,
       child: Column(
         children: [
           const Text(
@@ -440,91 +448,77 @@ class _LoginScreenState extends State<LoginScreen> {
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w500,
-              fontSize: 12,
+              fontSize: 14,
               color: Color(0xFFA0A0A0),
+              letterSpacing: 0,
+              height: 1.5,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           SizedBox(
-            width: 240,
+            width: 220,
+            height: 60,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildSocialButton(
                   onTap: () => _loginWithSocial('Apple'),
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF000000),
-                      borderRadius: BorderRadius.circular(24),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Icon(
-                      Icons.apple,
-                      color: Colors.white,
-                      size: 24,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: Image.asset(
+                        'assets/images/Group 126.png',
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
+
                 _buildSocialButton(
                   onTap: () => _loginWithSocial('Google'),
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFFFFF),
-                      borderRadius: BorderRadius.circular(24),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Center(
-                      child: Text(
-                        'G',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                          color: Color(0xFF4285F4),
-                        ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: Image.asset(
+                        'assets/images/Group 127.png',
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
                 ),
-                _buildSocialButton(
-                  onTap: () => _loginWithSocial('Naver'),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF03C75A),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'N',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+
                 _buildSocialButton(
                   onTap: () => _loginWithSocial('Kakao'),
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFEE500),
-                      borderRadius: BorderRadius.circular(24),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Center(
-                      child: Text(
-                        'K',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                          color: Color(0xFF3C1E1E),
-                        ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: Image.asset(
+                        'assets/images/Group 128.png',
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),

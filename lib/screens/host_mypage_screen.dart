@@ -2,15 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/review_service.dart';
 import '../services/web_launcher_service.dart';
 import '../models/user_model.dart';
 import 'booking_history_list_screen.dart';
 import 'host_meeting_management_screen.dart';
 import 'review_list_screen.dart';
+import 'host_review_list_screen.dart';
 import 'notice_list_screen.dart';
 import 'setting_screen.dart';
 import 'terms_policy_screen.dart';
 import 'license_list_screen.dart';
+import 'profile_edit_screen.dart';
+import 'favorites_screen.dart';
+import 'notification_screen.dart';
 
 class HostMypageScreen extends StatefulWidget {
   const HostMypageScreen({super.key});
@@ -81,8 +86,20 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
         ),
         centerTitle: true,
         actions: [
-          _buildIconButton(Icons.favorite_border),
-          _buildIconButton(Icons.notifications_none),
+          _buildIconButton(Icons.favorite_border, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+            );
+          }),
+          _buildIconButton(Icons.notifications_none, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const NotificationScreen(),
+              ),
+            );
+          }),
         ],
       ),
       body: _isLoading
@@ -116,70 +133,102 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
     );
   }
 
-  Widget _buildIconButton(IconData icon) {
+  Widget _buildIconButton(IconData icon, VoidCallback onPressed) {
     return Container(
       width: 44,
       height: 44,
       margin: const EdgeInsets.only(right: 4),
-      child: Icon(icon, color: Colors.white, size: 24),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white, size: 24),
+      ),
     );
   }
 
   Widget _buildProfileSection() {
-    return Row(
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      onTap: () => _navigateToProfileEdit(),
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        width: double.infinity,
+        height: 60,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+        decoration: BoxDecoration(color: Colors.transparent),
+        child: Row(
           children: [
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  _currentUser?.name ?? '사용자',
-                  style: const TextStyle(
-                    color: Color(0xFFEAEAEA),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Pretendard',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF44336),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'HOST',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
+                Row(
+                  children: [
+                    Text(
+                      _currentUser?.name ?? '사용자',
+                      style: const TextStyle(
+                        color: Color(0xFFEAEAEA),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Pretendard',
+                      ),
                     ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF44336),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'HOST',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Pretendard',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _getAccountTypeText(),
+                  style: const TextStyle(
+                    color: Color(0xFFA0A0A0),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Pretendard',
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 1),
-            Text(
-              _getAccountTypeText(),
-              style: const TextStyle(
-                color: Color(0xFFA0A0A0),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                fontFamily: 'Pretendard',
-              ),
-            ),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
           ],
         ),
-        const Spacer(),
-        const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
-      ],
+      ),
     );
+  }
+
+  Future<void> _navigateToProfileEdit() async {
+    if (_currentUser == null) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProfileEditScreen(user: _currentUser!),
+      ),
+    );
+
+    // 프로필 수정 후 돌아왔을 때 데이터 새로고침
+    if (result is UserModel) {
+      setState(() {
+        _currentUser = result;
+      });
+    }
   }
 
   String _getAccountTypeText() {
@@ -310,6 +359,8 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 2),
+                _buildReviewStats(),
               ],
             ),
           ),
@@ -351,6 +402,94 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
     return const Icon(Icons.stars, color: Color(0xFFF44336), size: 40);
   }
 
+  Widget _buildReviewStats() {
+    if (_currentUser == null) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ReviewService().getHostRatingStats(_currentUser!.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Row(
+            children: [
+              const Text(
+                '리뷰:',
+                style: TextStyle(
+                  color: Color(0xFFA0A0A0),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+              const SizedBox(width: 4),
+              const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1,
+                  color: Color(0xFFA0A0A0),
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Row(
+            children: [
+              const Text(
+                '리뷰:',
+                style: TextStyle(
+                  color: Color(0xFFA0A0A0),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+              const Text(
+                ' ⭐ 0.0 (0개)',
+                style: TextStyle(
+                  color: Color(0xFFA0A0A0),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+            ],
+          );
+        }
+
+        final stats = snapshot.data!;
+        final averageRating = stats['averageRating'] as double;
+        final totalReviews = stats['totalReviews'] as int;
+
+        return Row(
+          children: [
+            const Text(
+              '리뷰:',
+              style: TextStyle(
+                color: Color(0xFFA0A0A0),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+            Text(
+              ' ⭐ ${averageRating.toStringAsFixed(1)} (${totalReviews}개)',
+              style: const TextStyle(
+                color: Color(0xFFA0A0A0),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildActionButtons(BuildContext context) {
     return Row(
       children: [
@@ -367,7 +506,10 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ReviewListScreen(),
+                    builder: (context) => HostReviewListScreen(
+                      hostId: _currentUser!.id,
+                      hostName: _currentUser!.name,
+                    ),
                   ),
                 );
               },
@@ -382,7 +524,7 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
                 '리뷰',
                 style: TextStyle(
                   color: Color(0xFFF5F5F5),
-                  fontSize: 16,
+                  fontSize: 14, // 일관성을 위해 14로 변경
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Pretendard',
                 ),
@@ -419,7 +561,7 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
                 '예약 내역',
                 style: TextStyle(
                   color: Color(0xFFF5F5F5),
-                  fontSize: 16,
+                  fontSize: 14, // 일관성을 위해 14로 변경
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Pretendard',
                 ),
@@ -456,10 +598,11 @@ class _HostMypageScreenState extends State<HostMypageScreen> {
                 '호스트 센터',
                 style: TextStyle(
                   color: Color(0xFFF5F5F5),
-                  fontSize: 16,
+                  fontSize: 14, // 16 → 14로 줄임
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Pretendard',
                 ),
+                textAlign: TextAlign.center,
               ),
             ),
           ),

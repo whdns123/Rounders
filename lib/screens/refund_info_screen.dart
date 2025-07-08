@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/meeting.dart';
+import '../config/booking_policy_config.dart';
 
 class RefundInfoScreen extends StatelessWidget {
   final Meeting meeting;
@@ -32,63 +33,116 @@ class RefundInfoScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 전액 환불 섹션
-            const Text(
-              '전액 환불',
-              style: TextStyle(
-                color: Color(0xFFF5F5F5),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            // 동적 환불 정책 표시
+            _buildDynamicRefundPolicy(),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
-            _buildRefundItem('결제 후 30분 경과 전'),
-            _buildRefundItem('참가 신청 후 승인이 완료되지 않은 경우'),
-            _buildRefundItem('승인 후 호스트에 의해 내보내진 경우'),
-            _buildRefundItem('참여 확정 모임의 진행일 기준 4일 전까지'),
-            _buildRefundItem('소셜링 승인이 거절되었을 경우'),
-            _buildRefundItem('호스트가 내보내기를 진행했을 경우'),
-            _buildRefundItem('호스트가 소셜링을 폐강하거나 인원 미달로 자동 폐강될 경우'),
-            _buildRefundItem(
-              '소셜링 진행 3시간 전까지 소셜링 채팅방에 진행 여부 (모임 장소 및 시간)에 대한 공지가 없는 경우',
-            ),
-            _buildRefundItem('소셜링 운영 정보 (인원, 장소, 날짜 및 시간 등)에 큰 변동사항이 생긴 경우'),
-
-            const SizedBox(height: 12),
-
-            const Text(
-              '환불은 PG사 승인 취소 기간에 따라 주말, 공휴일을 제외한 영업일 기준 최대 3~5일 소요될 수 있습니다.',
-              style: TextStyle(
-                color: Color(0xFF8C8C8C),
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                height: 1.5,
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // 환불 불가 섹션
-            const Text(
-              '환불 불가',
-              style: TextStyle(
-                color: Color(0xFFF5F5F5),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            _buildRefundItem(
-              '참여 확정 모임의 진행일 기준 3일 전부터 (ex. 1월 7일 토요일에 진행되는 모임의 경우 1월 4일 수요일부터 환불 불가)',
-            ),
-            _buildRefundItem('모임 진행 당일에 신청한 경우'),
+            // 추가 안내 사항
+            _buildAdditionalInfo(),
           ],
         ),
       ),
+    );
+  }
+
+  // 동적 환불 정책 위젯 생성
+  Widget _buildDynamicRefundPolicy() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 전액 환불 섹션
+        const Text(
+          '전액 환불 (100%)',
+          style: TextStyle(
+            color: Color(0xFFF5F5F5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildRefundItem('결제 후 30분 이내'),
+        _buildRefundItem('모임 시작 4일 전까지'),
+        _buildRefundItem('호스트에 의한 모임 취소'),
+        _buildRefundItem('승인 거절 또는 시스템 오류'),
+
+        const SizedBox(height: 24),
+
+        // 부분 환불 섹션
+        const Text(
+          '부분 환불',
+          style: TextStyle(
+            color: Color(0xFFF5F5F5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildRefundItem('모임 시작 3일 전까지: 90% 환불'),
+        _buildRefundItem('모임 시작 1일 전까지: 50% 환불'),
+
+        const SizedBox(height: 24),
+
+        // 환불 불가 섹션
+        const Text(
+          '환불 불가',
+          style: TextStyle(
+            color: Color(0xFFF5F5F5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildRefundItem('모임 시작 3시간 전부터'),
+        _buildRefundItem('모임 진행 중 또는 완료 후'),
+      ],
+    );
+  }
+
+  // 추가 안내 사항 위젯
+  Widget _buildAdditionalInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '⚠️ 환불 처리 안내',
+          style: TextStyle(
+            color: Color(0xFFF5F5F5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '• 환불 처리는 ${BookingPolicyConfig.refundProcessingDays} 소요됩니다.',
+          style: const TextStyle(
+            color: Color(0xFF8C8C8C),
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '• 문의: ${BookingPolicyConfig.customerServicePhone} (${BookingPolicyConfig.serviceHours})',
+          style: const TextStyle(
+            color: Color(0xFF8C8C8C),
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '• 부분 환불 시 PG사 수수료가 차감됩니다.',
+          style: TextStyle(
+            color: Color(0xFF8C8C8C),
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            height: 1.5,
+          ),
+        ),
+      ],
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_cancellation.dart';
+import '../config/booking_policy_config.dart';
 
 class BookingCancellationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -15,11 +16,21 @@ class BookingCancellationService {
     try {
       // 트랜잭션으로 예약 취소 처리
       return await _firestore.runTransaction<String>((transaction) async {
-        // 1. 예약 정보 확인
+        // === 1단계: 모든 READ 작업 먼저 실행 ===
+
+        // 1-1. 예약 정보 읽기
         DocumentReference bookingRef = _firestore
             .collection('bookings')
             .doc(bookingId);
         DocumentSnapshot bookingSnapshot = await transaction.get(bookingRef);
+
+        // 1-2. 모임 정보 읽기
+        DocumentReference meetingRef = _firestore
+            .collection('meetings')
+            .doc(meetingId);
+        DocumentSnapshot meetingSnapshot = await transaction.get(meetingRef);
+
+        // === 2단계: READ 결과 검증 ===
 
         if (!bookingSnapshot.exists) {
           throw Exception('예약 정보를 찾을 수 없습니다.');
@@ -34,7 +45,9 @@ class BookingCancellationService {
           throw Exception('이미 취소된 예약입니다.');
         }
 
-        // 2. 취소 정보 생성
+        // === 3단계: 모든 WRITE 작업 실행 ===
+
+        // 3-1. 취소 정보 생성 및 저장
         DocumentReference cancellationRef = _firestore
             .collection('booking_cancellations')
             .doc();
@@ -52,22 +65,16 @@ class BookingCancellationService {
           refundStatus: 'pending',
         );
 
-        // 3. 취소 정보 저장
         transaction.set(cancellationRef, cancellation.toFirestore());
 
-        // 4. 예약 상태를 취소로 변경
+        // 3-2. 예약 상태를 취소로 변경
         transaction.update(bookingRef, {
           'status': 'cancelled',
           'cancelledAt': Timestamp.fromDate(DateTime.now()),
           'cancellationId': cancellationRef.id,
         });
 
-        // 5. 모임의 현재 참가자 수 감소
-        DocumentReference meetingRef = _firestore
-            .collection('meetings')
-            .doc(meetingId);
-        DocumentSnapshot meetingSnapshot = await transaction.get(meetingRef);
-
+        // 3-3. 모임의 현재 참가자 수 감소
         if (meetingSnapshot.exists) {
           final meetingData = meetingSnapshot.data() as Map<String, dynamic>;
           final currentParticipants = meetingData['currentParticipants'] ?? 0;
@@ -155,21 +162,42 @@ class BookingCancellationService {
         final meetingData = meetingSnapshot.data() as Map<String, dynamic>;
         final scheduledDate = (meetingData['scheduledDate'] as Timestamp)
             .toDate();
-        final now = DateTime.now();
+        final paymentDate = (bookingData['createdAt'] as Timestamp).toDate();
 
-        // 모임 시작 1시간 전까지 취소 가능
-        final cancellationDeadline = scheduledDate.subtract(
-          const Duration(hours: 1),
+        // 새로운 정책 설정을 사용하여 취소 가능 여부 확인
+        if (!BookingPolicyConfig.canCancelBooking(scheduledDate)) {
+          final deadlineHours =
+              BookingPolicyConfig.cancellationDeadline.inHours;
+          return {
+            'canCancel': false,
+            'reason': '모임 시작 ${deadlineHours}시간 전까지만 취소할 수 있습니다.',
+          };
+        }
+
+        // 환불 정책 확인
+        final refundPolicy = BookingPolicyConfig.getApplicableRefundPolicy(
+          scheduledDate,
+          paymentDate,
         );
 
-        if (now.isAfter(cancellationDeadline)) {
-          return {'canCancel': false, 'reason': '모임 시작 1시간 전까지만 취소할 수 있습니다.'};
+        if (refundPolicy == null) {
+          return {'canCancel': false, 'reason': '환불 정책을 확인할 수 없습니다.'};
         }
+
+        final originalAmount = (bookingData['amount'] ?? 0.0).toDouble();
+        final refundAmount = BookingPolicyConfig.calculateRefundAmount(
+          originalAmount,
+          refundPolicy.refundRate,
+        );
 
         return {
           'canCancel': true,
           'reason': null,
-          'refundAmount': bookingData['amount'] ?? 0.0,
+          'refundAmount': refundAmount,
+          'originalAmount': originalAmount,
+          'refundRate': refundPolicy.refundRate,
+          'refundPolicy': refundPolicy.name,
+          'policyDescription': refundPolicy.description,
           'meetingDate': scheduledDate,
         };
       }

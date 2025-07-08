@@ -3,15 +3,19 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/web_launcher_service.dart';
+import '../services/favorites_provider.dart';
 import '../models/user_model.dart';
 import 'booking_history_list_screen.dart';
-import 'review_list_screen.dart';
-import 'notice_list_screen.dart';
 import 'setting_screen.dart';
+import 'profile_edit_screen.dart';
 import 'terms_policy_screen.dart';
 import 'license_list_screen.dart';
-import 'profile_edit_screen.dart';
-import 'refund_list_screen.dart';
+import 'review_list_screen.dart';
+import 'notice_list_screen.dart';
+import 'favorites_screen.dart';
+import 'notification_screen.dart';
+import 'host_application_screen.dart';
+import 'host_mypage_screen.dart';
 
 class MypageScreen extends StatefulWidget {
   const MypageScreen({super.key});
@@ -80,8 +84,20 @@ class _MypageScreenState extends State<MypageScreen> {
         ),
         centerTitle: true,
         actions: [
-          _buildIconButton(Icons.favorite_border),
-          _buildIconButton(Icons.notifications_none),
+          _buildIconButton(Icons.favorite_border, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+            );
+          }),
+          _buildIconButton(Icons.notifications_none, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const NotificationScreen(),
+              ),
+            );
+          }),
         ],
       ),
       body: _isLoading
@@ -115,47 +131,58 @@ class _MypageScreenState extends State<MypageScreen> {
     );
   }
 
-  Widget _buildIconButton(IconData icon) {
+  Widget _buildIconButton(IconData icon, VoidCallback onPressed) {
     return Container(
       width: 44,
       height: 44,
       margin: const EdgeInsets.only(right: 4),
-      child: Icon(icon, color: Colors.white, size: 24),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white, size: 24),
+      ),
     );
   }
 
   Widget _buildProfileSection() {
     return GestureDetector(
       onTap: () => _navigateToProfileEdit(),
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _currentUser?.name ?? '사용자',
-                style: const TextStyle(
-                  color: Color(0xFFEAEAEA),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Pretendard',
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        width: double.infinity,
+        height: 60,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+        decoration: BoxDecoration(color: Colors.transparent),
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _currentUser?.name ?? '사용자',
+                  style: const TextStyle(
+                    color: Color(0xFFEAEAEA),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Pretendard',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                _getAccountTypeText(),
-                style: const TextStyle(
-                  color: Color(0xFFA0A0A0),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: 'Pretendard',
+                const SizedBox(height: 1),
+                Text(
+                  _getAccountTypeText(),
+                  style: const TextStyle(
+                    color: Color(0xFFA0A0A0),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Pretendard',
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
-        ],
+              ],
+            ),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+          ],
+        ),
       ),
     );
   }
@@ -227,7 +254,7 @@ class _MypageScreenState extends State<MypageScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _currentUser?.tier ?? '브론즈',
+                      _currentUser?.tierDisplayName ?? '클로버',
                       style: const TextStyle(
                         color: Color(0xFFEAEAEA),
                         fontSize: 14,
@@ -238,6 +265,7 @@ class _MypageScreenState extends State<MypageScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                // 1. 참가한 게임
                 Row(
                   children: [
                     const Text(
@@ -261,10 +289,11 @@ class _MypageScreenState extends State<MypageScreen> {
                   ],
                 ),
                 const SizedBox(height: 2),
+                // 2. 티어 점수 (총점수와 통합)
                 Row(
                   children: [
                     const Text(
-                      '총 점수:',
+                      '티어 점수:',
                       style: TextStyle(
                         color: Color(0xFFA0A0A0),
                         fontSize: 12,
@@ -273,7 +302,7 @@ class _MypageScreenState extends State<MypageScreen> {
                       ),
                     ),
                     Text(
-                      ' ${_currentUser?.totalScore ?? 0}점',
+                      ' ${_currentUser?.tierScore ?? 0}점',
                       style: const TextStyle(
                         color: Color(0xFFA0A0A0),
                         fontSize: 12,
@@ -281,13 +310,24 @@ class _MypageScreenState extends State<MypageScreen> {
                         fontFamily: 'Pretendard',
                       ),
                     ),
+                    if ((_currentUser?.pointsToNextTier ?? 0) > 0)
+                      Text(
+                        ' (다음 티어까지 ${_currentUser?.pointsToNextTier ?? 0}점)',
+                        style: const TextStyle(
+                          color: Color(0xFF4CAF50),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Pretendard',
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 2),
+                // 3. 평균 등수 (우승 횟수 대신)
                 Row(
                   children: [
                     const Text(
-                      '우승 횟수:',
+                      '평균 등수:',
                       style: TextStyle(
                         color: Color(0xFFA0A0A0),
                         fontSize: 12,
@@ -296,48 +336,9 @@ class _MypageScreenState extends State<MypageScreen> {
                       ),
                     ),
                     Text(
-                      ' ${_currentUser?.wins ?? 0}회',
-                      style: const TextStyle(
-                        color: Color(0xFFA0A0A0),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
-                    const Text(
-                      ' (승률: ',
-                      style: TextStyle(
-                        color: Color(0xFFA0A0A0),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
-                    Text(
-                      '${(_currentUser?.winRate ?? 0).toStringAsFixed(1)}%)',
-                      style: const TextStyle(
-                        color: Color(0xFFA0A0A0),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    const Text(
-                      '선호 지역:',
-                      style: TextStyle(
-                        color: Color(0xFFA0A0A0),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
-                    Text(
-                      ' ${_currentUser?.location ?? '미설정'}',
+                      (_currentUser?.meetingsPlayed ?? 0) > 0
+                          ? ' ${(_currentUser?.averageRank ?? 0).toStringAsFixed(1)}등'
+                          : ' 기록 없음',
                       style: const TextStyle(
                         color: Color(0xFFA0A0A0),
                         fontSize: 12,
@@ -356,58 +357,89 @@ class _MypageScreenState extends State<MypageScreen> {
   }
 
   String _getTierLevel() {
-    final tier = _currentUser?.tier ?? '브론즈';
+    final tier = _currentUser?.tier ?? 'clover';
     switch (tier) {
-      case '브론즈':
+      case 'clover':
         return 'LV.1';
-      case '실버':
+      case 'diamond':
         return 'LV.2';
-      case '골드':
+      case 'heart':
         return 'LV.3';
-      case '플래티넘':
+      case 'spade':
         return 'LV.4';
-      case '다이아몬드':
-        return 'LV.5';
       default:
         return 'LV.1';
     }
   }
 
   Widget _buildTierIcon() {
-    final tier = _currentUser?.tier ?? '브론즈';
-    switch (tier) {
-      case '브론즈':
-        return const Icon(
-          Icons.military_tech,
-          color: Color(0xFFCD7F32),
-          size: 40,
-        );
-      case '실버':
-        return const Icon(
-          Icons.workspace_premium,
-          color: Color(0xFFC0C0C0),
-          size: 40,
-        );
-      case '골드':
-        return const Icon(
-          Icons.emoji_events,
-          color: Color(0xFFFFD700),
-          size: 40,
-        );
-      case '플래티넘':
-        return const Icon(Icons.diamond, color: Color(0xFFE5E4E2), size: 40);
-      case '다이아몬드':
-        return const Icon(Icons.diamond, color: Color(0xFF87CEEB), size: 40);
-      default:
-        return const Icon(
-          Icons.local_florist,
-          color: Color(0xFF2E2E2E),
-          size: 40,
-        );
+    final tier = _currentUser?.tier ?? 'clover';
+
+    // 한국어 티어명을 영어 파일명으로 매핑
+    String getTierFileName(String tier) {
+      switch (tier) {
+        case '브론즈':
+        case 'clover':
+          return 'clover';
+        case '실버':
+        case 'diamond':
+          return 'diamond';
+        case '골드':
+        case 'heart':
+          return 'heart';
+        case '플래티넘':
+        case 'spade':
+          return 'spade';
+        default:
+          return 'clover';
+      }
     }
+
+    final fileName = getTierFileName(tier);
+    final imagePath = 'assets/images/$fileName.png';
+
+    // 디버깅 로그 제거 (개발 완료)
+
+    // 실제 티어 이미지 사용 (피그마 디자인에 맞춰 크기 조정)
+    return Image.asset(
+      imagePath,
+      width: 58,
+      height: 60,
+      errorBuilder: (context, error, stackTrace) {
+        // 이미지 로드 실패 시 fallback 아이콘 사용
+        // 이미지 파일이 없을 때 fallback 아이콘 (피그마 디자인에 맞춰 크기 조정)
+        switch (tier) {
+          case 'clover':
+            return const Icon(Icons.eco, color: Color(0xFF4CAF50), size: 58);
+          case 'diamond':
+            return const Icon(
+              Icons.diamond,
+              color: Color(0xFF87CEEB),
+              size: 58,
+            );
+          case 'heart':
+            return const Icon(
+              Icons.favorite,
+              color: Color(0xFFF44336),
+              size: 58,
+            );
+          case 'spade':
+            return const Icon(
+              Icons.landscape,
+              color: Color(0xFF424242),
+              size: 58,
+            );
+          default:
+            return const Icon(Icons.eco, color: Color(0xFF4CAF50), size: 58);
+        }
+      },
+    );
   }
 
   Widget _buildActionButtons(BuildContext context) {
+    // 호스트인 경우 3개 버튼, 일반 사용자는 2개 버튼
+    final isHost = _currentUser?.isHost == true;
+
     return Row(
       children: [
         // 리뷰 버튼
@@ -438,7 +470,7 @@ class _MypageScreenState extends State<MypageScreen> {
                 '리뷰',
                 style: TextStyle(
                   color: Color(0xFFF5F5F5),
-                  fontSize: 16,
+                  fontSize: 14, // 일관성을 위해 14로 변경
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Pretendard',
                 ),
@@ -446,7 +478,7 @@ class _MypageScreenState extends State<MypageScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isHost ? 8 : 12), // 호스트인 경우 간격 줄임
         // 예약 내역 버튼
         Expanded(
           child: Container(
@@ -475,7 +507,7 @@ class _MypageScreenState extends State<MypageScreen> {
                 '예약 내역',
                 style: TextStyle(
                   color: Color(0xFFF5F5F5),
-                  fontSize: 16,
+                  fontSize: 14, // 일관성을 위해 14로 변경
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Pretendard',
                 ),
@@ -483,6 +515,46 @@ class _MypageScreenState extends State<MypageScreen> {
             ),
           ),
         ),
+        // 호스트 센터 버튼 (호스트인 경우에만 표시)
+        if (isHost) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFF8C8C8C)),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HostMypageScreen(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                child: const Text(
+                  '센터',
+                  style: TextStyle(
+                    color: Color(0xFFF5F5F5),
+                    fontSize: 14, // 16 → 14로 줄임
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Pretendard',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -491,20 +563,6 @@ class _MypageScreenState extends State<MypageScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSettingsGroup(
-          title: '이용 내역',
-          items: [
-            _buildSettingItem('환불 내역', () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const RefundListScreen(),
-                ),
-              );
-            }),
-          ],
-        ),
-        const SizedBox(height: 36),
         _buildSettingsGroup(
           title: '고객센터',
           items: [
@@ -517,9 +575,7 @@ class _MypageScreenState extends State<MypageScreen> {
               );
             }),
             _buildSettingItem('고객센터 문의', () {
-              WebLauncherService.showDevelopmentDialog(context, '고객센터 문의');
-              // 실제 배포 시 아래 코드로 변경
-              // WebLauncherService.openCustomerService(context);
+              WebLauncherService.openCustomerService(context);
             }),
           ],
         ),
@@ -528,9 +584,12 @@ class _MypageScreenState extends State<MypageScreen> {
           title: '제휴 및 호스트',
           items: [
             _buildSettingItem('제휴 및 호스트 지원', () {
-              WebLauncherService.showDevelopmentDialog(context, '제휴 및 호스트 지원');
-              // 실제 배포 시 아래 코드로 변경
-              // WebLauncherService.openPartnership(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HostApplicationScreen(),
+                ),
+              );
             }),
           ],
         ),

@@ -272,7 +272,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
               // 확인 버튼
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _verifyCode,
                   style: ElevatedButton.styleFrom(

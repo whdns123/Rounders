@@ -1,0 +1,12 @@
+name: test_user_creator
+description: Firebase 테스트 사용자 생성 스크립트
+
+environment:
+  sdk: '^3.8.0'
+
+dependencies:
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+  cloud_firestore: ^4.13.6
+
+dev_dependencies: 

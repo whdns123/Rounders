@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/meeting.dart';
 import '../models/booking.dart';
 import '../services/firestore_service.dart';
+import '../services/tier_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MeetingParticipantsScreen extends StatefulWidget {
   final Meeting meeting;
@@ -45,7 +47,8 @@ class _MeetingParticipantsScreenState extends State<MeetingParticipantsScreen> {
 
   Future<void> _updateBookingStatus(String bookingId, String status) async {
     try {
-      await _firestoreService.updateBookingStatus(bookingId, status);
+      // 새로운 승인/거절 메서드 사용
+      await _firestoreService.updateBookingApprovalStatus(bookingId, status);
       await _loadBookings(); // 목록 새로고침
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -63,8 +66,21 @@ class _MeetingParticipantsScreenState extends State<MeetingParticipantsScreen> {
 
   Future<void> _updateParticipantRank(String bookingId, int rank) async {
     try {
+      // 예약 정보에서 사용자 ID 가져오기
+      final booking = _bookings.firstWhere((b) => b.id == bookingId);
+
+      // 1. 순위 업데이트
       await _firestoreService.updateBookingRank(bookingId, rank);
-      await _loadBookings(); // 목록 새로고침
+
+      // 2. 티어 점수 업데이트
+      final tierService = TierService();
+      await tierService.updateUserTierScore(booking.userId, rank);
+
+      // 3. 목록 새로고침
+      await _loadBookings();
+
+      // 4. 모든 참가자의 순위가 완료되었는지 확인
+      await _checkRankingCompletion();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -76,6 +92,43 @@ class _MeetingParticipantsScreenState extends State<MeetingParticipantsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('오류가 발생했습니다: $e'), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  // 모든 참가자의 순위가 완료되었는지 확인
+  Future<void> _checkRankingCompletion() async {
+    try {
+      // 모든 예약의 순위가 부여되었는지 확인
+      final unrankedBookings = _bookings.where(
+        (booking) => booking.rank == null,
+      );
+
+      if (unrankedBookings.isEmpty && _bookings.isNotEmpty) {
+        // 모든 순위가 완료됨
+
+        // 1. 모임의 hasResults를 true로 업데이트
+        await _firestoreService.updateMeeting(widget.meeting.id, {
+          'hasResults': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // 2. 모든 예약의 상태를 "completed"로 업데이트
+        for (final booking in _bookings) {
+          await _firestoreService.updateBookingStatus(booking.id, 'completed');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎉 모든 순위가 완료되었습니다! 참가자들의 예약이 완료 처리되었습니다.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ 순위 완료 확인 실패: $e');
     }
   }
 
@@ -153,25 +206,25 @@ class _MeetingParticipantsScreenState extends State<MeetingParticipantsScreen> {
                 Container(
                   width: 24,
                   height: 24,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2E2E2E),
+                  decoration: BoxDecoration(
+                    color: _getStatusIconBackgroundColor(booking.status),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
-                    child: Text(
-                      _isCompleted
-                          ? '${booking.rank ?? '-'}'
-                          : booking.status == BookingStatus.approved
-                          ? '✓'
-                          : booking.status == BookingStatus.rejected
-                          ? '✗'
-                          : '?',
-                      style: const TextStyle(
-                        color: Color(0xFFEAEAEA),
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isCompleted
+                        ? Text(
+                            '${booking.rank ?? '-'}',
+                            style: const TextStyle(
+                              color: Color(0xFFEAEAEA),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : Icon(
+                            _getStatusIcon(booking.status),
+                            color: _getStatusIconColor(booking.status),
+                            size: 16,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -393,5 +446,47 @@ class _MeetingParticipantsScreenState extends State<MeetingParticipantsScreen> {
               },
             ),
     );
+  }
+
+  // 상태에 따른 아이콘 색상 반환
+  Color _getStatusIconColor(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.pending:
+        return const Color(0xFFFF9800); // 노란색
+      case BookingStatus.approved:
+        return const Color(0xFF4CAF50); // 초록색
+      case BookingStatus.rejected:
+        return const Color(0xFF9E9E9E); // 회색
+      default:
+        return const Color(0xFFEAEAEA);
+    }
+  }
+
+  // 상태에 따른 아이콘 배경색 반환
+  Color _getStatusIconBackgroundColor(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.pending:
+        return const Color(0xFFFFF3E0); // 연한 노란색
+      case BookingStatus.approved:
+        return const Color(0xFFE8F5E8); // 연한 초록색
+      case BookingStatus.rejected:
+        return const Color(0xFFF5F5F5); // 연한 회색
+      default:
+        return const Color(0xFF2E2E2E);
+    }
+  }
+
+  // 상태에 따른 아이콘 반환
+  IconData _getStatusIcon(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.pending:
+        return Icons.schedule; // 시계 아이콘
+      case BookingStatus.approved:
+        return Icons.check; // 체크 아이콘
+      case BookingStatus.rejected:
+        return Icons.close; // X 아이콘
+      default:
+        return Icons.help_outline;
+    }
   }
 }

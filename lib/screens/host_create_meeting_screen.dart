@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,9 +10,22 @@ import '../services/auth_service.dart';
 import '../models/meeting.dart';
 import '../models/game.dart';
 import '../models/venue.dart';
+import '../utils/toast_utils.dart';
+import '../screens/meeting_detail_screen.dart';
 
 class HostCreateMeetingScreen extends StatefulWidget {
-  const HostCreateMeetingScreen({super.key});
+  final bool isEditMode;
+  final Meeting? meetingToEdit;
+  final Game? gameToEdit;
+  final Venue? venueToEdit;
+
+  const HostCreateMeetingScreen({
+    super.key,
+    this.isEditMode = false,
+    this.meetingToEdit,
+    this.gameToEdit,
+    this.venueToEdit,
+  });
 
   @override
   State<HostCreateMeetingScreen> createState() =>
@@ -33,6 +47,7 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
   bool _isSubmitting = false;
   bool _isLoadingVenues = true;
   String? _selectedCoverImage; // 호스트가 선택한 표지 이미지
+  bool _hasSetEditGame = false; // 수정 모드에서 게임이 이미 설정되었는지 확인
 
   late FirestoreService _firestoreService;
   late AuthService _authService;
@@ -49,6 +64,18 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
     return timeSlots;
   }
 
+  // 폼 유효성 검사
+  bool _isFormValid() {
+    return _titleController.text.trim().isNotEmpty &&
+        _selectedVenue != null &&
+        _startTime != null &&
+        _endTime != null &&
+        _selectedGame != null &&
+        (_startTime != null && _endTime != null
+            ? _isValidTimeRange(_startTime!, _endTime!)
+            : false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +85,75 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
     _loadUserName();
     _loadAllVenues(); // 처음부터 모든 장소 로드
     _ensureGamesExist();
+
+    // 수정 모드인 경우 기존 데이터 로드
+    if (widget.isEditMode && widget.meetingToEdit != null) {
+      _loadEditData();
+    }
+  }
+
+  void _loadEditData() {
+    final meeting = widget.meetingToEdit!;
+
+    // 폼 데이터 채우기
+    _titleController.text = meeting.title;
+    _locationController.text = meeting.location;
+    _benefitController.text = meeting.benefitDescription ?? '';
+
+    // 날짜 설정
+    _selectedDate = meeting.scheduledDate;
+
+    // 시간 설정
+    _startTime =
+        '${meeting.scheduledDate.hour.toString().padLeft(2, '0')}:${meeting.scheduledDate.minute.toString().padLeft(2, '0')}';
+    // 기본적으로 2시간 후로 종료 시간 설정 (실제로는 DB에서 가져와야 함)
+    final endDateTime = meeting.scheduledDate.add(const Duration(hours: 2));
+    _endTime =
+        '${endDateTime.hour.toString().padLeft(2, '0')}:${endDateTime.minute.toString().padLeft(2, '0')}';
+
+    // 커버 이미지 설정
+    _selectedCoverImage = meeting.coverImageUrl;
+
+    // 게임과 장소는 데이터 로드 후에 설정해야 함
+    // _setEditDataAfterLoad()에서 처리
+
+    setState(() {});
+  }
+
+  // 데이터 로드 후 게임과 장소 설정
+  void _setEditDataAfterLoad() {
+    if (!widget.isEditMode || widget.meetingToEdit == null) return;
+
+    // 장소 설정 - venues 리스트에서 동일한 ID를 가진 항목 찾기
+    if (widget.venueToEdit != null) {
+      final venueFromList = _venues.firstWhere(
+        (venue) => venue.id == widget.venueToEdit!.id,
+        orElse: () => widget.venueToEdit!,
+      );
+      if (_venues.contains(venueFromList)) {
+        _selectedVenue = venueFromList;
+      }
+    }
+
+    setState(() {});
+  }
+
+  // 게임 데이터 로드 후 게임 설정
+  void _setEditGameAfterLoad(List<Game> games) {
+    if (!widget.isEditMode || widget.gameToEdit == null || _hasSetEditGame)
+      return;
+
+    // 게임 설정 - games 리스트에서 동일한 ID를 가진 항목 찾기
+    final gameFromList = games.cast<Game?>().firstWhere(
+      (game) => game?.id == widget.gameToEdit!.id,
+      orElse: () => null,
+    );
+
+    if (gameFromList != null) {
+      _selectedGame = gameFromList;
+      _hasSetEditGame = true; // 플래그 설정하여 중복 실행 방지
+      setState(() {});
+    }
   }
 
   Future<void> _ensureGamesExist() async {
@@ -66,7 +162,7 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
       final games = await _firestoreService.getGames().first;
       if (games.isEmpty) {
         print('게임 데이터가 없어서 샘플 게임을 추가합니다...');
-        await _firestoreService.addSampleGames();
+        // await _firestoreService.addSampleGames(); // 자동 생성 비활성화
         print('샘플 게임 추가 완료!');
       } else {
         print('기존 게임 데이터 ${games.length}개 발견');
@@ -151,6 +247,9 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
           _venues = combinedVenues;
           _isLoadingVenues = false;
         });
+
+        // 수정 모드인 경우 데이터 로드 후 설정
+        _setEditDataAfterLoad();
       }
     } catch (e) {
       print('🚨 모든 장소 로딩 중 오류: $e');
@@ -162,12 +261,7 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
 
       // 사용자에게 오류 알림
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('장소 데이터를 불러오는 중 오류가 발생했습니다.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ToastUtils.showError(context, '장소 데이터를 불러오는 중 오류가 발생했습니다.');
       }
     }
   }
@@ -189,22 +283,83 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(primary: Color(0xFF111111)),
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFF44336), // 빨간색으로 변경하여 선택된 날짜 잘 보이게
+              onPrimary: Colors.white,
+              surface: Color(0xFF2E2E2E),
+              onSurface: Colors.white,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFF44336),
+              ),
+            ),
           ),
           child: child!,
         );
       },
     );
-    if (picked != null && picked != _selectedDate) {
+    if (picked != null) {
       setState(() {
         _selectedDate = picked;
       });
+      print('📅 선택된 날짜: ${picked.year}-${picked.month}-${picked.day}');
+    }
+  }
+
+  // 시간을 분으로 변환하는 헬퍼 함수
+  int _timeToMinutes(String time) {
+    final parts = time.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
+  // 분을 시간 문자열로 변환하는 헬퍼 함수
+  String _minutesToTime(int minutes) {
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    return '${hours.toString().padLeft(2, '0')}:${mins.toString().padLeft(2, '0')}';
+  }
+
+  // 유효한 시간 슬롯 필터링
+  List<String> _getValidTimeSlots(bool isStart) {
+    final allTimeSlots = _generateTimeSlots();
+
+    if (isStart) {
+      // 시작시간: 종료시간이 있으면 제약조건 적용
+      if (_endTime != null) {
+        final endMinutes = _timeToMinutes(_endTime!);
+        return allTimeSlots.where((time) {
+          final startMinutes = _timeToMinutes(time);
+          final duration = endMinutes - startMinutes;
+          return duration >= 60 && duration <= 300; // 1시간 이상 5시간 이하
+        }).toList();
+      }
+      return allTimeSlots;
+    } else {
+      // 종료시간: 시작시간이 있으면 제약조건 적용
+      if (_startTime != null) {
+        final startMinutes = _timeToMinutes(_startTime!);
+        return allTimeSlots.where((time) {
+          final endMinutes = _timeToMinutes(time);
+          final duration = endMinutes - startMinutes;
+          return duration >= 60 && duration <= 300; // 1시간 이상 5시간 이하
+        }).toList();
+      }
+      return allTimeSlots;
     }
   }
 
   Future<void> _selectTime(BuildContext context, bool isStart) async {
-    final timeSlots = _generateTimeSlots();
+    final validTimeSlots = _getValidTimeSlots(isStart);
     final currentTime = isStart ? _startTime : _endTime;
+
+    // 현재 선택된 시간의 인덱스 찾기
+    int initialIndex = 0;
+    if (currentTime != null && validTimeSlots.contains(currentTime)) {
+      initialIndex = validTimeSlots.indexOf(currentTime);
+    }
+
+    String? selectedTime = currentTime;
 
     await showModalBottomSheet(
       context: context,
@@ -226,41 +381,113 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 8),
+              if (!isStart && _startTime != null)
+                Text(
+                  '플레이 시간: 1시간 이상 5시간 이하',
+                  style: const TextStyle(
+                    color: Color(0xFFA0A0A0),
+                    fontSize: 12,
+                  ),
+                ),
               const SizedBox(height: 16),
               Expanded(
-                child: ListView.builder(
-                  itemCount: timeSlots.length,
-                  itemBuilder: (context, index) {
-                    final time = timeSlots[index];
-                    final isSelected = time == currentTime;
-
-                    return ListTile(
-                      title: Text(
-                        time,
+                child: validTimeSlots.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '선택 가능한 시간이 없습니다.\n시작 시간을 다시 선택해주세요.',
+                          style: TextStyle(
+                            color: Color(0xFFA0A0A0),
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    : CupertinoPicker(
+                        backgroundColor: Colors.transparent,
+                        itemExtent: 40,
+                        scrollController: FixedExtentScrollController(
+                          initialItem: initialIndex,
+                        ),
+                        onSelectedItemChanged: (index) {
+                          selectedTime = validTimeSlots[index];
+                        },
+                        children: validTimeSlots.map((time) {
+                          return Center(
+                            child: Text(
+                              time,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        '취소',
                         style: TextStyle(
-                          color: isSelected
-                              ? const Color(0xFFF44336)
-                              : Colors.white,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+                          color: Color(0xFFA0A0A0),
+                          fontSize: 16,
                         ),
                       ),
-                      selected: isSelected,
-                      selectedTileColor: const Color(0xFF3C3C3C),
-                      onTap: () {
-                        setState(() {
-                          if (isStart) {
-                            _startTime = time;
-                          } else {
-                            _endTime = time;
-                          }
-                        });
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: validTimeSlots.isEmpty
+                          ? null
+                          : () {
+                              if (selectedTime != null) {
+                                // 시간 검증
+                                if (_validateTimeSelection(
+                                  selectedTime!,
+                                  isStart,
+                                )) {
+                                  setState(() {
+                                    if (isStart) {
+                                      _startTime = selectedTime;
+                                      // 종료시간이 유효하지 않으면 리셋
+                                      if (_endTime != null &&
+                                          !_isValidTimeRange(
+                                            _startTime!,
+                                            _endTime!,
+                                          )) {
+                                        _endTime = null;
+                                      }
+                                    } else {
+                                      _endTime = selectedTime;
+                                    }
+                                  });
+                                  Navigator.pop(context);
+                                } else {
+                                  // 유효하지 않은 시간 선택시 경고
+                                  ToastUtils.showError(
+                                    context,
+                                    '플레이 시간은 1시간 이상 5시간 이하여야 합니다.',
+                                  );
+                                }
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF44336),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('확인', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -269,22 +496,37 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
     );
   }
 
+  // 시간 선택 검증
+  bool _validateTimeSelection(String selectedTime, bool isStart) {
+    if (isStart && _endTime != null) {
+      return _isValidTimeRange(selectedTime, _endTime!);
+    } else if (!isStart && _startTime != null) {
+      return _isValidTimeRange(_startTime!, selectedTime);
+    }
+    return true; // 하나만 선택된 경우는 항상 유효
+  }
+
+  // 시간 범위 검증 (1시간 이상 5시간 이하)
+  bool _isValidTimeRange(String startTime, String endTime) {
+    final startMinutes = _timeToMinutes(startTime);
+    final endMinutes = _timeToMinutes(endTime);
+    final duration = endMinutes - startMinutes;
+
+    return duration >= 60 && duration <= 300; // 1시간(60분) 이상 5시간(300분) 이하
+  }
+
   Future<void> _submitMeeting() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
     if (_startTime == null || _endTime == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('시작 시간과 종료 시간을 모두 선택해주세요')));
+      ToastUtils.showError(context, '시작 시간과 종료 시간을 모두 선택해주세요');
       return;
     }
 
     if (_selectedGame == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('게임을 선택해주세요')));
+      ToastUtils.showError(context, '게임을 선택해주세요');
       return;
     }
 
@@ -303,56 +545,101 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
         int.parse(startTimeParts[1]),
       );
 
-      // 모임 데이터 생성 (게임 정보 포함)
-      final Meeting meeting = Meeting(
-        id: '',
-        title: _titleController.text.trim().isNotEmpty
-            ? _titleController.text.trim()
-            : _selectedGame!.title,
-        description: _benefitController.text.trim().isNotEmpty
-            ? _benefitController.text.trim()
-            : _selectedGame!.description,
-        location: _locationController.text.trim(),
-        scheduledDate: scheduledDateTime,
-        maxParticipants: _selectedGame!.maxParticipants,
-        currentParticipants: 0,
-        hostId: _currentUserId ?? '',
-        hostName: _userName ?? '게스트',
-        price: _selectedGame!.price.toDouble(),
-        participants: [],
-        imageUrls: [_selectedGame!.imageUrl],
-        coverImageUrl: _selectedCoverImage, // 호스트가 업로드한 표지 이미지
-        requiredLevel: _selectedGame!.difficulty,
-        gameId: _selectedGame!.id,
-        venueId: _selectedVenue?.id, // 선택된 장소의 ID 저장
-        benefitDescription: _benefitController.text.trim(),
-        tags: _selectedGame!.tags,
-        difficulty: _selectedGame!.difficulty,
-        rating: _selectedGame!.rating,
-        reviewCount: _selectedGame!.reviewCount,
-        minParticipants: _selectedGame!.minParticipants,
+      // 🔍 호스트가 입력한 베테핏 디버그
+      final benefitInput = _benefitController.text.trim();
+      print('🎁 호스트가 입력한 베테핏: "$benefitInput"');
+      print('🎁 베테핏 입력 길이: ${benefitInput.length}');
+      print('🎁 베테핏 비어있음: ${benefitInput.isEmpty}');
+      print(
+        '🎁 description에 들어갈 값: ${benefitInput.isNotEmpty ? benefitInput : _selectedGame!.description}',
       );
 
-      // Firestore에 저장 (시작/종료 시간도 추가 필드로 저장)
-      await _firestoreService.createMeeting(meeting);
+      if (widget.isEditMode && widget.meetingToEdit != null) {
+        // 수정 모드: 기존 모임 업데이트
+        final updatedMeeting = Meeting(
+          id: widget.meetingToEdit!.id,
+          title: _titleController.text.trim().isNotEmpty
+              ? _titleController.text.trim()
+              : _selectedGame!.title,
+          description: _benefitController.text.trim().isNotEmpty
+              ? _benefitController.text.trim()
+              : _selectedGame!.description,
+          location: _locationController.text.trim(),
+          scheduledDate: scheduledDateTime,
+          maxParticipants: _selectedGame!.maxParticipants,
+          currentParticipants:
+              widget.meetingToEdit!.currentParticipants, // 기존 참가자 수 유지
+          hostId: widget.meetingToEdit!.hostId,
+          hostName: widget.meetingToEdit!.hostName,
+          price: _selectedGame!.price.toDouble(),
+          participants: widget.meetingToEdit!.participants, // 기존 참가자 목록 유지
+          imageUrls: [_selectedGame!.imageUrl],
+          coverImageUrl: _selectedCoverImage,
+          requiredLevel: _selectedGame!.difficulty,
+          gameId: _selectedGame!.id,
+          venueId: _selectedVenue?.id,
+          benefitDescription: _benefitController.text.trim(),
+          tags: _selectedGame!.tags,
+          difficulty: _selectedGame!.difficulty,
+          rating: _selectedGame!.rating,
+          reviewCount: _selectedGame!.reviewCount,
+          minParticipants: _selectedGame!.minParticipants,
+          status: widget.meetingToEdit!.status, // 기존 상태 유지
+        );
 
-      // 추가로 시간 정보를 별도 필드로 저장하고 싶다면:
-      // await _firestoreService.updateMeetingTimes(meetingId, _startTime!, _endTime!);
+        await _firestoreService.updateMeeting(
+          updatedMeeting.id,
+          updatedMeeting.toMap(),
+        );
+        ToastUtils.showSuccess(context, '모임이 수정되었습니다!');
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('모임이 성공적으로 생성되었습니다!')));
+        if (mounted) {
+          Navigator.pop(context, true); // true를 반환하여 새로고침 신호
+        }
+      } else {
+        // 생성 모드: 새 모임 생성
+        final Meeting meeting = Meeting(
+          id: '',
+          title: _titleController.text.trim().isNotEmpty
+              ? _titleController.text.trim()
+              : _selectedGame!.title,
+          description: _benefitController.text.trim().isNotEmpty
+              ? _benefitController.text.trim()
+              : _selectedGame!.description,
+          location: _locationController.text.trim(),
+          scheduledDate: scheduledDateTime,
+          maxParticipants: _selectedGame!.maxParticipants,
+          currentParticipants: 0,
+          hostId: _currentUserId ?? '',
+          hostName: _userName ?? '게스트',
+          price: _selectedGame!.price.toDouble(),
+          participants: [],
+          imageUrls: [_selectedGame!.imageUrl],
+          coverImageUrl: _selectedCoverImage, // 호스트가 업로드한 표지 이미지
+          requiredLevel: _selectedGame!.difficulty,
+          gameId: _selectedGame!.id,
+          venueId: _selectedVenue?.id, // 선택된 장소의 ID 저장
+          benefitDescription: _benefitController.text.trim(),
+          tags: _selectedGame!.tags,
+          difficulty: _selectedGame!.difficulty,
+          rating: _selectedGame!.rating,
+          reviewCount: _selectedGame!.reviewCount,
+          minParticipants: _selectedGame!.minParticipants,
+        );
 
-      if (mounted) {
-        Navigator.pop(context);
+        // Firestore에 저장 (시작/종료 시간도 추가 필드로 저장)
+        await _firestoreService.createMeeting(meeting);
+        ToastUtils.showSuccess(context, '모임이 성공적으로 생성되었습니다!');
+
+        if (mounted) {
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       setState(() {
         _isSubmitting = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('모임 생성 실패: $e')));
+      ToastUtils.showError(context, '모임 생성 실패: $e');
     }
   }
 
@@ -361,7 +648,10 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF111111),
       appBar: AppBar(
-        title: const Text('모임 만들기', style: TextStyle(color: Colors.white)),
+        title: Text(
+          widget.isEditMode ? '모임 수정하기' : '모임 만들기',
+          style: const TextStyle(color: Colors.white),
+        ),
         backgroundColor: const Color(0xFF111111),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -419,32 +709,71 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
             ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton(
-            onPressed: _isSubmitting ? null : _submitMeeting,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF44336),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: _isSubmitting
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+        child: Row(
+          children: [
+            // 미리보기 버튼
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _showPreview,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: const Color(0xFFF5F5F5),
+                    side: const BorderSide(color: Color(0xFF8C8C8C)),
+                    disabledBackgroundColor: Colors.transparent,
+                    disabledForegroundColor: const Color(0xFF8C8C8C),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  )
-                : const Text(
-                    '만들기',
+                  ),
+                  child: const Text(
+                    '미리보기',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-          ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            // 만들기 버튼
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: (_isSubmitting || !_isFormValid())
+                      ? null
+                      : _submitMeeting,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: (_isSubmitting || !_isFormValid())
+                        ? const Color(0xFFC2C2C2)
+                        : const Color(0xFFF44336),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFC2C2C2),
+                    disabledForegroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          widget.isEditMode ? '저장하기' : '만들기',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -484,6 +813,9 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
                 vertical: 12,
               ),
             ),
+            onChanged: (value) {
+              setState(() {}); // 폼 상태 변경 시 UI 업데이트
+            },
             validator: (value) {
               // 모든 필드는 선택사항 (장소는 별도 드롭다운에서 검증)
               return null;
@@ -527,7 +859,34 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
     );
   }
 
+  // 플레이 시간 계산
+  String _getPlayDuration() {
+    if (_startTime != null && _endTime != null) {
+      final startMinutes = _timeToMinutes(_startTime!);
+      final endMinutes = _timeToMinutes(_endTime!);
+      final duration = endMinutes - startMinutes;
+
+      if (duration <= 0) return '';
+
+      final hours = duration ~/ 60;
+      final minutes = duration % 60;
+
+      if (minutes == 0) {
+        return '플레이 시간: ${hours}시간';
+      } else {
+        return '플레이 시간: ${hours}시간 ${minutes}분';
+      }
+    }
+    return '';
+  }
+
   Widget _buildTimeButtons(BuildContext context) {
+    final playDuration = _getPlayDuration();
+    final isValidDuration =
+        _startTime != null &&
+        _endTime != null &&
+        _isValidTimeRange(_startTime!, _endTime!);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -604,6 +963,24 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
             ),
           ],
         ),
+        if (playDuration.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            playDuration,
+            style: TextStyle(
+              color: isValidDuration
+                  ? const Color(0xFF4CAF50)
+                  : const Color(0xFFF44336),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (!isValidDuration && _startTime != null && _endTime != null)
+            const Text(
+              '플레이 시간은 1시간 이상 5시간 이하여야 합니다.',
+              style: TextStyle(color: Color(0xFFF44336), fontSize: 12),
+            ),
+        ],
       ],
     );
   }
@@ -674,7 +1051,9 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
               borderRadius: BorderRadius.circular(4),
             ),
             child: DropdownButtonFormField<Venue>(
-              value: _selectedVenue,
+              value: _selectedVenue != null && _venues.contains(_selectedVenue)
+                  ? _selectedVenue
+                  : null,
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(
@@ -807,6 +1186,13 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
 
             final games = snapshot.data ?? [];
 
+            // 수정 모드에서 게임 데이터 로드 후 설정 (한 번만 실행)
+            if (games.isNotEmpty && !_hasSetEditGame) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _setEditGameAfterLoad(games);
+              });
+            }
+
             if (games.isEmpty) {
               return Container(
                 width: double.infinity,
@@ -831,10 +1217,8 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: DropdownButtonFormField<Game>(
-                value:
-                    _selectedGame != null &&
-                        games.any((g) => g.id == _selectedGame!.id)
-                    ? games.firstWhere((g) => g.id == _selectedGame!.id)
+                value: _selectedGame != null && games.contains(_selectedGame)
+                    ? _selectedGame
                     : null,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
@@ -986,9 +1370,81 @@ class _HostCreateMeetingScreenState extends State<HostCreateMeetingScreen> {
       if (mounted) {
         Navigator.pop(context);
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('이미지 업로드 실패: $e')));
+      ToastUtils.showError(context, '이미지 업로드 실패: $e');
     }
+  }
+
+  // 미리보기 기능
+  void _showPreview() {
+    // 기본 유효성 검증
+    if (_selectedGame == null) {
+      ToastUtils.showError(context, '게임을 선택해주세요');
+      return;
+    }
+
+    if (_selectedVenue == null) {
+      ToastUtils.showError(context, '장소를 선택해주세요');
+      return;
+    }
+
+    if (_startTime == null || _endTime == null) {
+      ToastUtils.showError(context, '시작 시간과 종료 시간을 모두 선택해주세요');
+      return;
+    }
+
+    // 시작 시간으로 DateTime 생성
+    final startTimeParts = _startTime!.split(':');
+    final scheduledDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      int.parse(startTimeParts[0]),
+      int.parse(startTimeParts[1]),
+    );
+
+    // 임시 모임 객체 생성 (실제로 저장되지 않음)
+    final previewMeeting = Meeting(
+      id: 'preview_${DateTime.now().millisecondsSinceEpoch}',
+      title: _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : _selectedGame!.title,
+      description: _benefitController.text.trim().isNotEmpty
+          ? _benefitController.text.trim()
+          : _selectedGame!.description,
+      location: _locationController.text.trim(),
+      scheduledDate: scheduledDateTime,
+      maxParticipants: _selectedGame!.maxParticipants,
+      currentParticipants: 0,
+      hostId: _currentUserId ?? '',
+      hostName: _userName ?? '게스트',
+      price: _selectedGame!.price.toDouble(),
+      participants: [],
+      imageUrls: [_selectedGame!.imageUrl],
+      coverImageUrl: _selectedCoverImage,
+      requiredLevel: _selectedGame!.difficulty,
+      gameId: _selectedGame!.id,
+      venueId: _selectedVenue?.id,
+      benefitDescription: _benefitController.text.trim(),
+      tags: _selectedGame!.tags,
+      difficulty: _selectedGame!.difficulty,
+      rating: _selectedGame!.rating,
+      reviewCount: _selectedGame!.reviewCount,
+      minParticipants: _selectedGame!.minParticipants,
+      status: 'preview', // 미리보기 상태 표시
+    );
+
+    // 실제 모임 상세 화면을 미리보기 모드로 호출
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MeetingDetailScreen(
+          meetingId: previewMeeting.id,
+          isPreview: true,
+          previewMeeting: previewMeeting,
+          previewGame: _selectedGame,
+          previewVenue: _selectedVenue,
+        ),
+      ),
+    );
   }
 }

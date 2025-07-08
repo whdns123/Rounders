@@ -1,0 +1,12 @@
+{
+  "name": "test-user-creator",
+  "version": "1.0.0",
+  "description": "Firebase 테스트 사용자 생성 스크립트",
+  "main": "create_test_users.js",
+  "scripts": {
+    "start": "node create_test_users.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+} 

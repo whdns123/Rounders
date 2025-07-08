@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -23,9 +24,13 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('✅ Firebase 초기화 성공');
+    if (kDebugMode) {
+      print('✅ Firebase 초기화 성공');
+    }
   } catch (e) {
-    print('⚠️ Firebase 초기화 오류: $e');
+    if (kDebugMode) {
+      print('⚠️ Firebase 초기화 오류: $e');
+    }
     // Firebase 오류가 있어도 앱은 계속 실행
   }
 
@@ -58,6 +63,25 @@ class MyApp extends StatelessWidget {
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
               useMaterial3: true,
+              // 전역 비활성화 버튼 색상 설정
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  disabledBackgroundColor: const Color(0xFFC2C2C2), // 비활성화 배경색
+                  disabledForegroundColor: const Color(
+                    0xFF111111,
+                  ), // 비활성화 텍스트색 (어두운 배경에 맞게)
+                ),
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  disabledForegroundColor: const Color(0xFFC2C2C2), // 비활성화 텍스트색
+                ),
+              ),
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(
+                  disabledForegroundColor: const Color(0xFFC2C2C2), // 비활성화 텍스트색
+                ),
+              ),
             ),
             locale: const Locale('ko', 'KR'),
             localizationsDelegates: const [
@@ -107,14 +131,30 @@ class MyApp extends StatelessWidget {
 
   void _initializeApp() async {
     try {
-      print('✅ Firebase 초기화 성공');
+      if (kDebugMode) {
+        print('✅ Firebase 초기화 성공');
+      }
 
       // 샘플 게임 데이터 추가 (한 번만 실행)
       final firestoreService = FirestoreService();
-      await firestoreService.addSampleGames();
-      print('✅ 샘플 게임 데이터 추가 완료');
+      // await firestoreService.addSampleGames(); // 자동 생성 비활성화
+      if (kDebugMode) {
+        print('✅ 샘플 게임 데이터 추가 완료');
+      }
+
+      // 앱 시작 시 만료된 모임들의 상태를 자동으로 업데이트
+      firestoreService.updateExpiredMeetingsStatus().catchError((e) {
+        if (kDebugMode) {
+          print('⚠️ 앱 시작 시 모임 상태 자동 업데이트 중 오류: $e');
+        }
+      });
+      if (kDebugMode) {
+        print('🔄 앱 시작 시 모임 상태 자동 업데이트 시작');
+      }
     } catch (e) {
-      print('❌ 앱 초기화 실패: $e');
+      if (kDebugMode) {
+        print('❌ 앱 초기화 실패: $e');
+      }
     }
   }
 }

@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../widgets/common_modal.dart';
 import '../services/auth_service.dart';
 import '../services/review_service.dart';
 import '../services/firestore_service.dart';
+import '../services/image_upload_service.dart';
 import '../models/review_model.dart';
 
 class ReviewWriteScreen extends StatefulWidget {
@@ -12,6 +15,8 @@ class ReviewWriteScreen extends StatefulWidget {
   final DateTime meetingDate;
   final String meetingImage;
   final int participantCount;
+  final String hostId;
+  final String hostName;
 
   const ReviewWriteScreen({
     super.key,
@@ -21,6 +26,8 @@ class ReviewWriteScreen extends StatefulWidget {
     required this.meetingDate,
     required this.meetingImage,
     required this.participantCount,
+    required this.hostId,
+    required this.hostName,
   });
 
   @override
@@ -30,12 +37,15 @@ class ReviewWriteScreen extends StatefulWidget {
 class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
   final TextEditingController _reviewController = TextEditingController();
   final ReviewService _reviewService = ReviewService();
+  final ImageUploadService _imageUploadService = ImageUploadService();
   final int _maxLength = 500;
   final int _minLength = 20;
 
   int _rating = 5;
-  final List<String> _imageUrls = [];
+  final List<File> _selectedImages = []; // 선택된 이미지 파일들
+  final List<String> _imageUrls = []; // 업로드된 이미지 URL들
   bool _isLoading = false;
+  bool _isUploadingImage = false;
   String? _errorMessage;
 
   @override
@@ -63,7 +73,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
   }
 
   bool get _canSubmit {
-    return _isValidReview && !_isLoading;
+    return _isValidReview && !_isLoading && !_isUploadingImage;
   }
 
   @override
@@ -75,7 +85,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => _showExitDialog(),
+          onPressed: () async => await _showExitDialog(),
         ),
         title: const Text(
           '리뷰 쓰기',
@@ -90,7 +100,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: () => _showExitDialog(),
+            onPressed: () async => await _showExitDialog(),
           ),
         ],
       ),
@@ -153,9 +163,9 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          if (_imageUrls.length < 5) _buildAddImageButton(),
+          if (_selectedImages.length < 5) _buildAddImageButton(),
           ...List.generate(
-            _imageUrls.length,
+            _selectedImages.length,
             (index) => _buildImageItem(index),
           ),
         ],
@@ -207,7 +217,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
               image: DecorationImage(
-                image: NetworkImage(_imageUrls[index]),
+                image: FileImage(_selectedImages[index]),
                 fit: BoxFit.cover,
               ),
             ),
@@ -363,7 +373,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
         padding: const EdgeInsets.all(16),
         child: Container(
           width: double.infinity,
-          height: 48,
+          height: 52,
           decoration: BoxDecoration(
             color: _canSubmit
                 ? const Color(0xFFF44336)
@@ -379,21 +389,36 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
+            child: _isLoading || _isUploadingImage
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _isUploadingImage ? '이미지 업로드 중...' : '저장 중...',
+                        style: const TextStyle(
+                          color: Color(0xFFF5F5F5),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Pretendard',
+                        ),
+                      ),
+                    ],
                   )
                 : Text(
                     '저장하기',
                     style: TextStyle(
                       color: _canSubmit
                           ? const Color(0xFFF5F5F5)
-                          : const Color(0xFF8C8C8C),
+                          : const Color(0xFF111111), // 비활성화 시 어두운 텍스트로 변경
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
                       fontFamily: 'Pretendard',
@@ -405,133 +430,55 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
     );
   }
 
-  void _addImage() {
-    // 이미지 선택 기능 - 현재는 더미 이미지 추가
-    if (_imageUrls.length < 5) {
-      setState(() {
-        _imageUrls.add('https://via.placeholder.com/150');
-      });
+  Future<void> _addImage() async {
+    if (_selectedImages.length >= 5) return;
+
+    try {
+      final selectedImage = await _imageUploadService.pickImage(context);
+      if (selectedImage != null) {
+        setState(() {
+          _selectedImages.add(selectedImage);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('이미지 선택 실패: $e'),
+            backgroundColor: const Color(0xFFF44336),
+          ),
+        );
+      }
     }
   }
 
   void _removeImage(int index) {
     setState(() {
-      _imageUrls.removeAt(index);
+      _selectedImages.removeAt(index);
     });
   }
 
-  void _showExitDialog() {
+  Future<void> _showExitDialog() async {
     final hasContent =
-        _reviewController.text.trim().isNotEmpty || _imageUrls.isNotEmpty;
+        _reviewController.text.trim().isNotEmpty || _selectedImages.isNotEmpty;
 
     if (!hasContent) {
       Navigator.of(context).pop();
       return;
     }
 
-    showDialog(
+    final shouldExit = await ModalUtils.showConfirmModal(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF2E2E2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                '리뷰 작성을 그만하시겠어요?',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Pretendard',
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '작성 중인 내용은 저장되지 않아요.\n정말 나가시겠어요?',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'Pretendard',
-                  height: 1.43,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 36),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF8C8C8C)),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        child: const Text(
-                          '나가기',
-                          style: TextStyle(
-                            color: Color(0xFFF5F5F5),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF44336),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        child: const Text(
-                          '계속 작성하기',
-                          style: TextStyle(
-                            color: Color(0xFFF5F5F5),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((shouldExit) {
-      if (shouldExit == true) {
-        Navigator.of(context).pop();
-      }
-    });
+      title: '리뷰 작성을 그만하시겠어요?',
+      description: '작성 중인 내용은 저장되지 않아요.\n정말 나가시겠어요?',
+      confirmText: '나가기',
+      cancelText: '계속 작성하기',
+      isDestructive: false,
+    );
+
+    if (shouldExit == true) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _submitReview() async {
@@ -557,6 +504,29 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
       // 사용자 정보 가져오기
       final userData = await firestoreService.getUserById(user.uid);
 
+      // 이미지 업로드 (선택된 이미지가 있는 경우)
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        setState(() {
+          _isUploadingImage = true;
+        });
+
+        try {
+          uploadedImageUrls = await _imageUploadService.uploadImages(
+            _selectedImages,
+            user.uid,
+          );
+          print('업로드된 이미지 URL들: $uploadedImageUrls');
+        } catch (e) {
+          print('이미지 업로드 실패: $e');
+          // 이미지 업로드 실패해도 리뷰는 작성할 수 있도록 함
+        } finally {
+          setState(() {
+            _isUploadingImage = false;
+          });
+        }
+      }
+
       // 리뷰 생성
       final review = ReviewModel(
         id: '',
@@ -570,10 +540,12 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
         meetingImage: widget.meetingImage,
         rating: _rating,
         content: _reviewController.text.trim(),
-        images: _imageUrls,
+        images: uploadedImageUrls, // 업로드된 이미지 URL 사용
         createdAt: DateTime.now(),
         helpfulVotes: [],
         participantCount: widget.participantCount,
+        hostId: widget.hostId,
+        hostName: widget.hostName,
       );
 
       await _reviewService.createReview(review);
@@ -600,6 +572,7 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isUploadingImage = false;
         });
       }
     }

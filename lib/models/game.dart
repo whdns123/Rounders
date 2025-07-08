@@ -4,18 +4,40 @@ class Game {
   final String subtitle;
   final String description;
   final String prologue;
-  final String imageUrl; // 대표 이미지 (기존 호환성 유지)
-  final List<String> images; // 게임 상세 이미지들 (4개)
-  final List<String> timeTable;
-  final List<String> benefits;
-  final List<String> targetAudience;
-  final int minParticipants;
-  final int maxParticipants;
-  final double price;
-  final String difficulty;
+  final String imageUrl; // 대표 이미지 (gameImage와 동일할 수 있음)
+  final String gameImage; // 게임 대표 이미지
+  final String benefitImage; // 혜택 이미지
+  final String meetingPlayImage; // 모임 중 플레이 사진
+  final String roundersPlayImage; // 라운더스 스타일 게임 이미지
+  final List<String> images; // 모든 이미지들을 배열로 (호환성)
+  final List<String> rules; // 게임 룰 (기존 timeTable)
+  final List<String> materials; // 준비물
   final List<String> tags;
-  final double rating;
-  final int reviewCount;
+  final int minPlayers; // 실제 필드명
+  final int maxPlayers; // 실제 필드명
+  final double participationFee; // 실제 필드명 (기존 price)
+  final String difficulty;
+  final String gameType; // 게임 타입
+  final int estimatedDuration; // 예상 시간 (분)
+  final bool isActive; // 활성 상태
+
+  // 호환성을 위한 기존 필드들 (deprecated)
+  @deprecated
+  List<String> get timeTable => rules;
+  @deprecated
+  List<String> get benefits => []; // 실제 Firestore에는 없음
+  @deprecated
+  List<String> get targetAudience => []; // 실제 Firestore에는 없음
+  @deprecated
+  int get minParticipants => minPlayers;
+  @deprecated
+  int get maxParticipants => maxPlayers;
+  @deprecated
+  double get price => participationFee;
+  @deprecated
+  double get rating => 0.0; // 실제 Firestore에는 없음
+  @deprecated
+  int get reviewCount => 0; // 실제 Firestore에는 없음
 
   Game({
     required this.id,
@@ -24,17 +46,21 @@ class Game {
     required this.description,
     required this.prologue,
     required this.imageUrl,
+    required this.gameImage,
+    required this.benefitImage,
+    required this.meetingPlayImage,
+    required this.roundersPlayImage,
     this.images = const [], // 기본값으로 빈 배열
-    required this.timeTable,
-    required this.benefits,
-    required this.targetAudience,
-    required this.minParticipants,
-    required this.maxParticipants,
-    required this.price,
-    required this.difficulty,
+    required this.rules,
+    required this.materials,
     required this.tags,
-    required this.rating,
-    required this.reviewCount,
+    required this.minPlayers,
+    required this.maxPlayers,
+    required this.participationFee,
+    required this.difficulty,
+    required this.gameType,
+    required this.estimatedDuration,
+    required this.isActive,
   });
 
   factory Game.fromMap(Map<String, dynamic> map) {
@@ -45,18 +71,22 @@ class Game {
         subtitle: map['subtitle'] ?? '',
         description: map['description'] ?? '',
         prologue: map['prologue'] ?? '',
-        imageUrl: map['imageUrl'] ?? map['representativeImage'] ?? '',
+        imageUrl: map['imageUrl'] ?? '',
+        gameImage: map['gameImage'] ?? '',
+        benefitImage: map['benefitImage'] ?? '',
+        meetingPlayImage: map['meetingPlayImage'] ?? '',
+        roundersPlayImage: map['roundersPlayImage'] ?? '',
         images: _extractImages(map),
-        timeTable: _parseStringList(map['timeTable'] ?? map['rules']),
-        benefits: _parseStringList(map['benefits'] ?? ['게임 참여 혜택']),
-        targetAudience: _parseStringList(map['targetAudience'] ?? ['모든 참가자']),
-        minParticipants: _parseInt(map['minParticipants'] ?? map['minPlayers']),
-        maxParticipants: _parseInt(map['maxParticipants'] ?? map['maxPlayers']),
-        price: _parseDouble(map['price'] ?? 15000), // 기본값 설정
-        difficulty: _parseDifficulty(map['difficulty']),
+        rules: _parseStringList(map['rules']),
+        materials: _parseStringList(map['materials']),
         tags: _parseStringList(map['tags']),
-        rating: _parseDouble(map['rating']),
-        reviewCount: _parseInt(map['reviewCount']),
+        minPlayers: _parseInt(map['minPlayers']),
+        maxPlayers: _parseInt(map['maxPlayers']),
+        participationFee: _parseDouble(map['participationFee']),
+        difficulty: map['difficulty'] ?? '난이도 정보 없음',
+        gameType: map['gameType'] ?? '',
+        estimatedDuration: _parseInt(map['estimatedDuration']),
+        isActive: map['isActive'] ?? true,
       );
     } catch (e) {
       print('🚨 Game.fromMap 오류: $e');
@@ -115,17 +145,20 @@ class Game {
       'description': description,
       'prologue': prologue,
       'imageUrl': imageUrl,
-      'images': images,
-      'timeTable': timeTable,
-      'benefits': benefits,
-      'targetAudience': targetAudience,
-      'minParticipants': minParticipants,
-      'maxParticipants': maxParticipants,
-      'price': price,
-      'difficulty': difficulty,
+      'gameImage': gameImage,
+      'benefitImage': benefitImage,
+      'meetingPlayImage': meetingPlayImage,
+      'roundersPlayImage': roundersPlayImage,
+      'rules': rules,
+      'materials': materials,
       'tags': tags,
-      'rating': rating,
-      'reviewCount': reviewCount,
+      'minPlayers': minPlayers,
+      'maxPlayers': maxPlayers,
+      'participationFee': participationFee,
+      'difficulty': difficulty,
+      'gameType': gameType,
+      'estimatedDuration': estimatedDuration,
+      'isActive': isActive,
     };
   }
 
@@ -141,32 +174,56 @@ class Game {
   /// Firestore 문서에서 이미지 리스트 추출
   ///
   /// 1) `images` 배열이 존재하면 그대로 사용
-  /// 2) 배열이 없거나 비어 있으면, key 이름에 `image` 가 포함된 String 값들을 수집해
-  ///    최대 10개까지만 반환 (대표 imageUrl 은 제외)
+  /// 2) 배열이 없거나 비어 있으면, 특정 이미지 필드들을 순서대로 수집
   static List<String> _extractImages(Map<String, dynamic> map) {
+    print('🔍 Game._extractImages 시작');
+    print('🔍 전체 필드: ${map.keys.toList()}');
+
     // 1) 배열 형태 우선
     final rawImages = map['images'];
     final parsed = _parseStringList(rawImages);
-    if (parsed.isNotEmpty) return parsed;
+    if (parsed.isNotEmpty) {
+      print('🔍 images 배열 사용: $parsed');
+      return parsed;
+    }
 
-    // 2) 개별 필드 스캔
+    // 2) 특정 이미지 필드들을 순서대로 수집
     final List<String> found = [];
+
+    // 이미지 순서 최적화: 중복 방지 및 의미있는 순서로 배치
+    final imageFields = [
+      'gameImage', // index 0: 게임 대표 이미지
+      'roundersPlayImage', // index 1: 라운더스 게임 진행 이미지 ⭐
+      'meetingPlayImage', // index 2: 모임 플레이 이미지
+      'benefitImage', // index 3: 참여혜택 배경 이미지 ⭐ (중요한 위치!)
+      'imageUrl', // index 4: 추가 이미지 (마지막으로 이동)
+    ];
+
+    for (String field in imageFields) {
+      final value = map[field];
+      if (value is String) {
+        found.add(value); // 빈 문자열도 인덱스 유지를 위해 추가
+        print('🔍 $field 추가: $value (${value.isEmpty ? "빈 문자열" : "유효"})');
+      } else {
+        found.add(''); // null이면 빈 문자열로 인덱스 유지
+        print('🔍 $field: null이므로 빈 문자열 추가');
+      }
+    }
+
+    // 3) 나머지 이미지 필드들 스캔 (위에서 추가하지 않은 것들)
     map.forEach((key, value) {
-      if (value is String && value.isNotEmpty) {
+      if (value is String && value.isNotEmpty && !found.contains(value)) {
         final lowerKey = key.toLowerCase();
         if (lowerKey.contains('image') || lowerKey.contains('img')) {
-          found.add(value);
+          if (!imageFields.contains(key)) {
+            found.add(value);
+            print('🔍 추가 이미지 $key 추가: $value');
+          }
         }
       }
     });
 
-    // 대표 imageUrl 과 중복 제거
-    final repImage = map['imageUrl'] ?? map['representativeImage'];
-    if (repImage is String) {
-      found.removeWhere((url) => url == repImage);
-    }
-
-    // 개수 제한 및 반환
+    print('🔍 최종 images 배열: $found');
     return found.take(10).toList();
   }
 }

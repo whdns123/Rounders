@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/web_launcher_service.dart';
+import '../config/app_urls.dart';
 import 'delete_account_screen.dart';
 import 'terms_policy_screen.dart';
+import '../widgets/common_modal.dart';
 
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
@@ -111,56 +114,13 @@ class _SettingScreenState extends State<SettingScreen> {
   }
 
   Future<bool?> _showLogoutDialog() async {
-    return showDialog<bool>(
+    return ModalUtils.showConfirmModal(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2E2E2E),
-          title: const Text(
-            '로그아웃',
-            style: TextStyle(
-              color: Colors.white,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          content: const Text(
-            '정말 로그아웃하시겠습니까?',
-            style: TextStyle(
-              color: Color(0xFFEAEAEA),
-              fontFamily: 'Pretendard',
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text(
-                '취소',
-                style: TextStyle(
-                  color: Color(0xFFC2C2C2),
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
-            ),
-            TextButton(
-              child: const Text(
-                '로그아웃',
-                style: TextStyle(
-                  color: Color(0xFFF44336),
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
-            ),
-          ],
-        );
-      },
+      title: '로그아웃 하시겠습니까?',
+      description: '지금 로그아웃하면 서비스 이용을 위해 다시 로그인해야 해요. 계속하시겠어요?',
+      confirmText: '로그아웃',
+      cancelText: '닫기',
+      isDestructive: true,
     );
   }
 
@@ -175,43 +135,11 @@ class _SettingScreenState extends State<SettingScreen> {
   }
 
   void _showErrorDialog(String message) {
-    showDialog(
+    ModalUtils.showErrorModal(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2E2E2E),
-          title: const Text(
-            '오류',
-            style: TextStyle(
-              color: Colors.white,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          content: Text(
-            message,
-            style: const TextStyle(
-              color: Color(0xFFEAEAEA),
-              fontFamily: 'Pretendard',
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text(
-                '확인',
-                style: TextStyle(
-                  color: Color(0xFFF44336),
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
+      title: '오류',
+      description: message,
+      buttonText: '확인',
     );
   }
 
@@ -295,6 +223,27 @@ class _SettingScreenState extends State<SettingScreen> {
                         print('TermsPolicyScreen 네비게이션 성공');
                       } catch (e) {
                         print('TermsPolicyScreen 네비게이션 오류: $e');
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 개인정보 처리방침
+                  _buildActionItem(
+                    title: '개인정보 처리방침',
+                    onTap: () async {
+                      const privacyPolicyUrl = AppUrls.privacyPolicy;
+                      try {
+                        await WebLauncherService.openUrl(
+                          context,
+                          privacyPolicyUrl,
+                          pageName: '개인정보 처리방침',
+                        );
+                      } catch (e) {
+                        print('개인정보 처리방침 링크 열기 실패: $e');
+                        if (mounted) {
+                          _showErrorDialog('링크를 열 수 없습니다. 나중에 다시 시도해주세요.');
+                        }
                       }
                     },
                   ),

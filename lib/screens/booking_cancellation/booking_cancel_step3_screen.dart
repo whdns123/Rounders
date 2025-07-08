@@ -1,3 +1,9 @@
+/*
+⚠️ 이 파일은 더 이상 사용되지 않습니다.
+홈 화면의 통합 취소 기능으로 대체되었습니다.
+(lib/screens/home_screen.dart의 _showCancelBooking 메서드 참조)
+*/
+
 import 'package:flutter/material.dart';
 import '../../models/booking.dart';
 import '../../services/auth_service.dart';

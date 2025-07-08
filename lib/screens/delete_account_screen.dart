@@ -148,7 +148,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             decoration: const BoxDecoration(color: Color(0xFF111111)),
             child: SizedBox(
               width: double.infinity,
-              height: 48,
+              height: 52,
               child: ElevatedButton(
                 onPressed: _canSubmit ? _handleSubmit : null,
                 style: ElevatedButton.styleFrom(
@@ -157,7 +157,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                       : const Color(0xFFC2C2C2),
                   foregroundColor: _canSubmit
                       ? const Color(0xFFF5F5F5)
-                      : const Color(0xFF8C8C8C),
+                      : const Color(0xFF111111), // 비활성화 시 어두운 텍스트로 변경
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),

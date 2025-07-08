@@ -8,6 +8,7 @@ import '../services/email_validation_service.dart';
 import '../models/user_model.dart';
 import 'terms_detail_screen.dart';
 import 'phone_verification_screen.dart';
+import '../utils/toast_utils.dart';
 
 class SignupScreen extends StatefulWidget {
   final VoidCallback? onSignupSuccess;
@@ -29,8 +30,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
-  bool _isEmailValid = false;
-  bool _isEmailChecking = false;
+
   bool _isPhoneVerified = false;
   bool _isPhoneSending = false;
   String? _errorMessage;
@@ -79,7 +79,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool get _canSignup {
     return _nameController.text.isNotEmpty &&
         _emailController.text.isNotEmpty &&
-        _isEmailValid &&
+        EmailValidationService.isValidEmailFormat(_emailController.text) &&
         _phoneController.text.isNotEmpty &&
         _isPhoneVerified &&
         _passwordController.text.isNotEmpty &&
@@ -92,63 +92,16 @@ class _SignupScreenState extends State<SignupScreen> {
         _agreePrivacy;
   }
 
-  // 이메일 검증
-  Future<void> _validateEmail() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('이메일을 먼저 입력해주세요.')));
-      return;
-    }
-
-    setState(() {
-      _isEmailChecking = true;
-    });
-
-    try {
-      final result = await EmailValidationService.validateEmail(email);
-
-      setState(() {
-        _isEmailValid = result['isValid'];
-        _isEmailChecking = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message']),
-          backgroundColor: result['isValid'] ? Colors.green : Colors.red,
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        _isEmailChecking = false;
-        _isEmailValid = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('이메일 검증 중 오류가 발생했습니다.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   // 전화번호 인증 코드 전송
   Future<void> _sendPhoneVerification() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('전화번호를 먼저 입력해주세요.')));
+      ToastUtils.showError(context, '전화번호를 먼저 입력해주세요.');
       return;
     }
 
     if (!PhoneAuthService.isValidPhoneNumber(phone)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('올바른 전화번호 형식이 아닙니다.')));
+      ToastUtils.showError(context, '올바른 전화번호 형식이 아닙니다.');
       return;
     }
 
@@ -185,32 +138,17 @@ class _SignupScreenState extends State<SignupScreen> {
           setState(() {
             _isPhoneVerified = true;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('전화번호 인증이 완료되었습니다.'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          ToastUtils.showSuccess(context, '전화번호 인증이 완료되었습니다.');
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? '인증번호 전송에 실패했습니다.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ToastUtils.showError(context, result['message'] ?? '인증번호 전송에 실패했습니다.');
       }
     } catch (e) {
       setState(() {
         _isPhoneSending = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('전화번호 인증 중 오류가 발생했습니다.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ToastUtils.showError(context, '전화번호 인증 중 오류가 발생했습니다.');
     }
   }
 
@@ -468,99 +406,46 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3C3C3C),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: Color(0xFFFFFFFF),
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: '이메일을 입력해주세요.',
-                    hintStyle: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Color(0xFFA0A0A0),
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return '이메일을 입력해주세요.';
-                    }
-                    if (!EmailValidationService.isValidEmailFormat(value)) {
-                      return '올바른 이메일 형식이 아닙니다.';
-                    }
-                    return null;
-                  },
-                  onChanged: (_) {
-                    setState(() {
-                      _isEmailValid = false;
-                    });
-                  },
-                ),
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFF3C3C3C),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Color(0xFFFFFFFF),
+            ),
+            decoration: const InputDecoration(
+              hintText: '이메일을 입력해주세요.',
+              hintStyle: TextStyle(
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Color(0xFFA0A0A0),
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 12,
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              height: 44,
-              width: 88,
-              decoration: BoxDecoration(
-                color: _isEmailChecking
-                    ? const Color(0xFF6E6E6E)
-                    : (_isEmailValid
-                          ? const Color(0xFF4CAF50)
-                          : const Color(0xFF4B4B4B)),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: _isEmailValid
-                      ? const Color(0xFF4CAF50)
-                      : const Color(0xFF4B4B4B),
-                ),
-              ),
-              child: TextButton(
-                onPressed: _isEmailChecking ? null : _validateEmail,
-                child: _isEmailChecking
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFFFFFFFF),
-                          ),
-                        ),
-                      )
-                    : Text(
-                        _isEmailValid ? '확인완료' : '확인하기',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: _isEmailValid
-                              ? const Color(0xFFFFFFFF)
-                              : const Color(0xFF6E6E6E),
-                        ),
-                      ),
-              ),
-            ),
-          ],
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return '이메일을 입력해주세요.';
+              }
+              if (!EmailValidationService.isValidEmailFormat(value)) {
+                return '올바른 이메일 형식이 아닙니다.';
+              }
+              return null;
+            },
+            onChanged: (_) => setState(() {}),
+          ),
         ),
       ],
     );
@@ -1035,7 +920,7 @@ class _SignupScreenState extends State<SignupScreen> {
       color: const Color(0xFF111111),
       child: SizedBox(
         width: double.infinity,
-        height: 48,
+        height: 52,
         child: ElevatedButton(
           onPressed: _canSignup && !_isLoading ? _signup : null,
           style: ElevatedButton.styleFrom(
@@ -1044,7 +929,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 : const Color(0xFFC2C2C2),
             foregroundColor: _canSignup
                 ? Colors.white
-                : const Color(0xFF8C8C8C),
+                : const Color(0xFF111111), // 비활성화 시 어두운 텍스트로 변경
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(4),

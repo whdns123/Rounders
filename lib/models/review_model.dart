@@ -10,6 +10,8 @@ class ReviewModel {
   final String meetingLocation;
   final DateTime meetingDate;
   final String meetingImage;
+  final String hostId;
+  final String hostName;
   final int rating; // 1-5 별점
   final String content;
   final List<String> images;
@@ -27,6 +29,8 @@ class ReviewModel {
     required this.meetingLocation,
     required this.meetingDate,
     required this.meetingImage,
+    required this.hostId,
+    required this.hostName,
     required this.rating,
     required this.content,
     required this.images,
@@ -46,6 +50,8 @@ class ReviewModel {
       'meetingLocation': meetingLocation,
       'meetingDate': Timestamp.fromDate(meetingDate),
       'meetingImage': meetingImage,
+      'hostId': hostId,
+      'hostName': hostName,
       'rating': rating,
       'content': content,
       'images': images,
@@ -67,6 +73,8 @@ class ReviewModel {
       meetingDate:
           (map['meetingDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       meetingImage: map['meetingImage'] ?? '',
+      hostId: map['hostId'] ?? '',
+      hostName: map['hostName'] ?? '',
       rating: map['rating'] ?? 5,
       content: map['content'] ?? '',
       images: List<String>.from(map['images'] ?? []),
@@ -86,6 +94,8 @@ class ReviewModel {
     String? meetingLocation,
     DateTime? meetingDate,
     String? meetingImage,
+    String? hostId,
+    String? hostName,
     int? rating,
     String? content,
     List<String>? images,
@@ -103,6 +113,8 @@ class ReviewModel {
       meetingLocation: meetingLocation ?? this.meetingLocation,
       meetingDate: meetingDate ?? this.meetingDate,
       meetingImage: meetingImage ?? this.meetingImage,
+      hostId: hostId ?? this.hostId,
+      hostName: hostName ?? this.hostName,
       rating: rating ?? this.rating,
       content: content ?? this.content,
       images: images ?? this.images,

@@ -6,7 +6,6 @@ import '../models/user_model.dart';
 import '../models/game.dart';
 import '../models/booking.dart';
 import '../models/venue.dart';
-import '../utils/sample_game_data.dart';
 
 class FirestoreService {
   // 싱글톤 인스턴스
@@ -148,37 +147,135 @@ class FirestoreService {
     }
   }
 
-  // 모임 목록 가져오기 (활성화된 모임만)
+  // 모임 목록 가져오기 (활성화된 모임만, 기한이 지나지 않은 모임만)
   Stream<List<Meeting>> getActiveMeetings() {
+    // 1차 필터링: Firestore 쿼리 수준에서 시작 시간이 지나지 않은 모임만
+    final now = DateTime.now();
+    final threshold = now.subtract(
+      const Duration(hours: 1),
+    ); // 1시간 여유를 둠 (게임 시간 고려)
+
     return _meetings
         .where('isActive', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
+        .where('scheduledDate', isGreaterThan: Timestamp.fromDate(threshold))
+        .orderBy('scheduledDate', descending: false) // 가까운 모임부터 표시
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) =>
-                    Meeting.fromMap(doc.id, doc.data() as Map<String, dynamic>),
-              )
-              .toList(),
-        );
+        .asyncMap((snapshot) async {
+          // 만료된 모임들의 상태를 자동으로 업데이트
+          updateExpiredMeetingsStatus().catchError((e) {
+            if (kDebugMode) {
+              print('⚠️ 자동 상태 업데이트 중 오류: $e');
+            }
+          });
+
+          List<Meeting> validMeetings = [];
+
+          for (var doc in snapshot.docs) {
+            try {
+              final meeting = Meeting.fromMap(
+                doc.id,
+                doc.data() as Map<String, dynamic>,
+              );
+
+              // 2차 필터링: 게임 종료 시간 계산하여 정확한 필터링
+              if (await _isMeetingStillActive(meeting)) {
+                validMeetings.add(meeting);
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('⚠️ 모임 데이터 파싱 오류: $e');
+              }
+              // 파싱 오류가 있어도 계속 진행
+            }
+          }
+
+          return validMeetings;
+        });
   }
 
-  // 호스트가 만든 모임 목록 가져오기
+  // 모임이 아직 진행 중이거나 시작 전인지 확인
+  Future<bool> _isMeetingStillActive(Meeting meeting) async {
+    try {
+      // 🔧 1순위: status가 completed면 무조건 비활성
+      if (meeting.status == 'completed') {
+        if (kDebugMode) {
+          print('📅 모임 ${meeting.title}: status가 completed이므로 비활성');
+        }
+        return false;
+      }
+
+      final now = DateTime.now();
+
+      // 게임 정보가 있으면 정확한 종료 시간 계산
+      if (meeting.gameId != null && meeting.gameId!.isNotEmpty) {
+        final game = await getGameById(meeting.gameId!);
+        if (game != null && game.estimatedDuration > 0) {
+          final endTime = meeting.scheduledDate.add(
+            Duration(minutes: game.estimatedDuration),
+          );
+          if (kDebugMode) {
+            print(
+              '📅 모임 ${meeting.title}: 시작 ${meeting.scheduledDate}, 종료 예정 $endTime, 현재 $now',
+            );
+          }
+          return endTime.isAfter(now);
+        }
+      }
+
+      // 게임 정보가 없으면 기본 3시간으로 가정
+      final defaultEndTime = meeting.scheduledDate.add(
+        const Duration(hours: 3),
+      );
+      if (kDebugMode) {
+        print(
+          '📅 모임 ${meeting.title}: 시작 ${meeting.scheduledDate}, 기본 종료 예정 $defaultEndTime, 현재 $now',
+        );
+      }
+      return defaultEndTime.isAfter(now);
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ 모임 활성 상태 확인 오류: $e');
+      }
+      // 오류 시 시작 시간만으로 판단 (보수적 접근)
+      return meeting.scheduledDate.isAfter(DateTime.now());
+    }
+  }
+
+  // 호스트가 만든 모임 목록 가져오기 (기한이 지나지 않은 모임만)
   Stream<List<Meeting>> getHostMeetings(String hostId) {
+    // 1차 필터링: Firestore 쿼리 수준에서 기본 필터링
+    final now = DateTime.now();
+    final threshold = now.subtract(const Duration(hours: 1));
+
     return _meetings
         .where('hostId', isEqualTo: hostId)
         .where('isActive', isEqualTo: true)
+        .where('scheduledDate', isGreaterThan: Timestamp.fromDate(threshold))
         .orderBy('scheduledDate', descending: false)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) =>
-                    Meeting.fromMap(doc.id, doc.data() as Map<String, dynamic>),
-              )
-              .toList(),
-        );
+        .asyncMap((snapshot) async {
+          List<Meeting> activeMeetings = [];
+
+          for (var doc in snapshot.docs) {
+            try {
+              final meeting = Meeting.fromMap(
+                doc.id,
+                doc.data() as Map<String, dynamic>,
+              );
+
+              // 2차 필터링: 게임 종료 시간 계산하여 정확한 필터링
+              if (await _isMeetingStillActive(meeting)) {
+                activeMeetings.add(meeting);
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('⚠️ 호스트 모임 데이터 파싱 오류: $e');
+              }
+            }
+          }
+
+          return activeMeetings;
+        });
   }
 
   // 특정 모임 가져오기
@@ -187,7 +284,11 @@ class FirestoreService {
       final doc = await _meetings.doc(meetingId).get();
       if (!doc.exists) return null;
 
-      return Meeting.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+      final rawData = doc.data() as Map<String, dynamic>;
+
+      final meeting = Meeting.fromMap(doc.id, rawData);
+
+      return meeting;
     } catch (e) {
       if (kDebugMode) {
         print('모임 정보 가져오기 실패: $e');
@@ -351,15 +452,18 @@ class FirestoreService {
               final meetingData = meetingDoc.data() as Map<String, dynamic>;
               final meeting = Meeting.fromMap(meetingId, meetingData);
 
-              reservations.add({
-                'applicationId': doc.id,
-                'meeting': meeting,
-                'status': applicationData['status'],
-                'appliedAt': applicationData['appliedAt'],
-                'bookingNumber':
-                    applicationData['bookingNumber'] ??
-                    'BOOK-${doc.id.substring(0, 8).toUpperCase()}',
-              });
+              // 🔧 활성화되고 진행 중인 모임만 예약 내역에 표시
+              if (meeting.isActive && await _isMeetingStillActive(meeting)) {
+                reservations.add({
+                  'applicationId': doc.id,
+                  'meeting': meeting,
+                  'status': applicationData['status'],
+                  'appliedAt': applicationData['appliedAt'],
+                  'bookingNumber':
+                      applicationData['bookingNumber'] ??
+                      'BOOK-${doc.id.substring(0, 8).toUpperCase()}',
+                });
+              }
             }
           }
 
@@ -421,7 +525,7 @@ class FirestoreService {
     }
   }
 
-  // 찜한 모임 목록 가져오기
+  // 찜한 모임 목록 가져오기 (기한이 지나지 않은 모임만)
   Stream<List<Meeting>> getFavoriteMeetings() {
     final userId = currentUserId;
     if (userId == null) {
@@ -445,8 +549,8 @@ class FirestoreService {
               final meetingData = meetingDoc.data() as Map<String, dynamic>;
               final meeting = Meeting.fromMap(meetingId, meetingData);
 
-              // 활성화된 모임만 추가
-              if (meeting.isActive) {
+              // 활성화되고 아직 진행 중인 모임만 추가
+              if (meeting.isActive && await _isMeetingStillActive(meeting)) {
                 favoriteMeetings.add(meeting);
               }
             }
@@ -569,33 +673,6 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) {
         print('게임 모임 생성 실패: $e');
-      }
-      rethrow;
-    }
-  }
-
-  // 샘플 게임 데이터 추가 (개발/테스트용)
-  Future<void> addSampleGames() async {
-    try {
-      final sampleGames = SampleGameData.getSampleGames();
-
-      for (final game in sampleGames) {
-        final gameData = SampleGameData.gameToFirestoreMap(game);
-        // 강제로 덮어쓰기 (SetOptions.merge 대신 set 사용)
-        await _games.doc(game.id).set(gameData, SetOptions(merge: false));
-
-        if (kDebugMode) {
-          print('🎮 게임 데이터 저장: ${game.id} - ${game.title}');
-          print('🎮 이미지 개수: ${game.images.length}');
-        }
-      }
-
-      if (kDebugMode) {
-        print('✅ 샘플 게임 데이터 강제 업데이트 완료');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('❌ 샘플 게임 데이터 추가 실패: $e');
       }
       rethrow;
     }
@@ -1023,60 +1100,6 @@ class FirestoreService {
         print('host_applications에서 장소 정보 가져오기 실패: $e');
       }
       return null;
-    }
-  }
-
-  // 샘플 장소 데이터 추가 (개발/테스트용)
-  Future<void> addSampleVenue(String hostId) async {
-    try {
-      final sampleVenue = {
-        'name': '콤파일',
-        'address': '서울 마포구 잔다리로 73 1층, COMPILE',
-        'phone': '0507-1494-1049',
-        'website': null,
-        'instagram': 'https://www.instagram.com/01compile',
-        'operatingHours': ['매일 11:00 - 22:30'],
-        'imageUrls': [
-          'https://example.com/compile1.jpg',
-          'https://example.com/compile2.jpg',
-          'https://example.com/compile3.jpg',
-          'https://example.com/compile4.jpg',
-          'https://example.com/compile5.jpg',
-        ],
-        'menu': [
-          {
-            'name': '드립커피',
-            'description': '국내외 최고의 스페셜티커피 로스터리 원두를 셀렉하여 고객 취향에 맞게 전달하는 핸드드립커피',
-            'price': 9000.0,
-            'imageUrl': 'https://example.com/drip-coffee.jpg',
-          },
-          {
-            'name': '버터케익',
-            'description': '달콤한 향미와 꾸덕한 식감으로 드립커피와 완벽한 페어링을 자랑하는 콤파일 수제 디저트',
-            'price': 9000.0,
-            'imageUrl': 'https://example.com/butter-cake.jpg',
-          },
-          {
-            'name': '디카페인',
-            'description': '모든 커피 음료 디카페인 변경 가능',
-            'price': 9000.0,
-            'imageUrl': 'https://example.com/decaf.jpg',
-          },
-        ],
-        'hostId': hostId,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await _venues.add(sampleVenue);
-
-      if (kDebugMode) {
-        print('샘플 장소 데이터 추가 완료');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('샘플 장소 데이터 추가 실패: $e');
-      }
-      rethrow;
     }
   }
 
@@ -1526,7 +1549,7 @@ class FirestoreService {
                   data['instagramUrl']?.toString() ??
                   data['instagram']?.toString(),
               operatingHours: data['businessHours'] != null
-                  ? [data['businessHours'].toString()]
+                  ? [data['businessHours']]
                   : (data['operatingHours'] != null &&
                         data['operatingHours'] is List)
                   ? List<String>.from(data['operatingHours'])
@@ -1612,5 +1635,308 @@ class FirestoreService {
       }
       rethrow;
     }
+  }
+
+  // 모임 상태 업데이트
+  Future<void> updateMeetingStatus(String meetingId, String status) async {
+    try {
+      await _meetings.doc(meetingId).update({
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ 모임 상태 업데이트 완료: $meetingId -> $status');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 모임 상태 업데이트 실패: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // 예약 상태를 대기중으로 생성
+  Future<String> createBookingWithPendingStatus(
+    String meetingId,
+    String userId,
+    String userName,
+    double amount, {
+    String? bookingNumber,
+  }) async {
+    try {
+      final finalBookingNumber =
+          bookingNumber ?? 'BK${DateTime.now().millisecondsSinceEpoch}';
+
+      final booking = {
+        'meetingId': meetingId,
+        'userId': userId,
+        'userName': userName,
+        'bookingDate': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'pending', // 기본값을 대기중으로 설정
+        'bookingNumber': finalBookingNumber,
+        'amount': amount,
+        'rank': null,
+      };
+
+      final docRef = await _firestore.collection('bookings').add(booking);
+
+      if (kDebugMode) {
+        print('✅ 대기중 예약 생성 완료: ${docRef.id}');
+      }
+
+      return docRef.id;
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 대기중 예약 생성 실패: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // 예약 승인/거절
+  Future<void> updateBookingApprovalStatus(
+    String bookingId,
+    String status, // 'approved' 또는 'rejected'
+  ) async {
+    try {
+      await _firestore.collection('bookings').doc(bookingId).update({
+        'status': status,
+        'approvedAt': status == 'approved'
+            ? FieldValue.serverTimestamp()
+            : null,
+        'rejectedAt': status == 'rejected'
+            ? FieldValue.serverTimestamp()
+            : null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 승인/거절 시 모임의 참가자 수 업데이트
+      if (status == 'approved' || status == 'rejected') {
+        await _updateMeetingParticipantCount(bookingId);
+      }
+
+      if (kDebugMode) {
+        print('✅ 예약 승인/거절 완료: $bookingId -> $status');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 예약 승인/거절 실패: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // 모임의 실제 참가자 수 업데이트 (승인된 사용자와 확정된 사용자 모두 카운트)
+  Future<void> _updateMeetingParticipantCount(String bookingId) async {
+    try {
+      // 해당 예약의 모임 ID 가져오기
+      final bookingDoc = await _firestore
+          .collection('bookings')
+          .doc(bookingId)
+          .get();
+      if (!bookingDoc.exists) return;
+
+      final bookingData = bookingDoc.data() as Map<String, dynamic>;
+      final meetingId = bookingData['meetingId'] as String;
+
+      // 해당 모임의 승인된 예약 및 확정된 예약 수 계산
+      final confirmedBookingsSnapshot = await _firestore
+          .collection('bookings')
+          .where('meetingId', isEqualTo: meetingId)
+          .where('status', whereIn: ['approved', 'confirmed'])
+          .get();
+
+      final confirmedCount = confirmedBookingsSnapshot.docs.length;
+
+      // 모임 문서의 currentParticipants 업데이트
+      await _meetings.doc(meetingId).update({
+        'currentParticipants': confirmedCount,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ 모임 참가자 수 업데이트: $meetingId -> $confirmedCount명');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 모임 참가자 수 업데이트 실패: $e');
+      }
+    }
+  }
+
+  // 모임 종료 시간 계산
+  Future<DateTime?> getMeetingEndTime(Meeting meeting) async {
+    try {
+      if (meeting.gameId != null && meeting.gameId!.isNotEmpty) {
+        final game = await getGameById(meeting.gameId!);
+        if (game != null && game.estimatedDuration > 0) {
+          return meeting.scheduledDate.add(
+            Duration(minutes: game.estimatedDuration),
+          );
+        }
+      }
+
+      // 게임 정보가 없으면 기본 3시간으로 계산
+      return meeting.scheduledDate.add(const Duration(hours: 3));
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 모임 종료 시간 계산 실패: $e');
+      }
+      // 에러 시 기본 3시간으로 계산
+      return meeting.scheduledDate.add(const Duration(hours: 3));
+    }
+  }
+
+  // 만료된 모임들의 상태를 자동으로 업데이트
+  Future<void> updateExpiredMeetingsStatus() async {
+    try {
+      final now = DateTime.now();
+
+      // recruiting 또는 ongoing 상태인 모임들 중에서 종료 시간이 지난 것들 찾기
+      final snapshot = await _meetings
+          .where('status', whereIn: ['recruiting', 'ongoing'])
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      List<Future<void>> updateTasks = [];
+
+      for (var doc in snapshot.docs) {
+        try {
+          final meetingData = doc.data() as Map<String, dynamic>;
+          final meeting = Meeting.fromMap(doc.id, meetingData);
+
+          final endTime = await getMeetingEndTime(meeting);
+          if (endTime != null && now.isAfter(endTime)) {
+            // 종료 시간이 지났으면 상태를 completed로 업데이트
+            updateTasks.add(updateMeetingStatus(doc.id, 'completed'));
+
+            if (kDebugMode) {
+              print('🔄 자동 상태 업데이트: ${meeting.title} -> completed');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('❌ 모임 상태 확인 중 오류 (${doc.id}): $e');
+          }
+        }
+      }
+
+      // 모든 업데이트 작업을 병렬로 실행
+      await Future.wait(updateTasks);
+
+      if (kDebugMode) {
+        print('✅ 만료된 모임 상태 업데이트 완료: ${updateTasks.length}개');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 만료된 모임 상태 업데이트 실패: $e');
+      }
+    }
+  }
+
+  // 특정 모임의 상태를 현재 시간 기준으로 확인 및 업데이트
+  Future<String> checkAndUpdateMeetingStatus(String meetingId) async {
+    try {
+      final doc = await _meetings.doc(meetingId).get();
+      if (!doc.exists) {
+        throw Exception('모임을 찾을 수 없습니다.');
+      }
+
+      final meetingData = doc.data() as Map<String, dynamic>;
+      final meeting = Meeting.fromMap(meetingId, meetingData);
+      final now = DateTime.now();
+
+      // 이미 completed 상태면 그대로 반환
+      if (meeting.status == 'completed') {
+        return 'completed';
+      }
+
+      // 종료 시간 계산
+      final endTime = await getMeetingEndTime(meeting);
+      if (endTime != null && now.isAfter(endTime)) {
+        // 종료 시간이 지났으면 상태를 completed로 업데이트
+        await updateMeetingStatus(meetingId, 'completed');
+        return 'completed';
+      }
+
+      // 시작 시간이 지났으면 ongoing
+      if (now.isAfter(meeting.scheduledDate) &&
+          meeting.status == 'recruiting') {
+        await updateMeetingStatus(meetingId, 'ongoing');
+        return 'ongoing';
+      }
+
+      // 아직 시작 전이면 recruiting 유지
+      return meeting.status;
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ 모임 상태 확인/업데이트 실패: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // 호스트의 완료된 모임 목록 가져오기
+  Stream<List<Meeting>> getHostCompletedMeetings() {
+    final userId = currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return _meetings
+        .where('hostId', isEqualTo: userId)
+        .where('status', isEqualTo: 'completed')
+        .where('isActive', isEqualTo: true)
+        .orderBy('scheduledDate', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(
+                (doc) =>
+                    Meeting.fromMap(doc.id, doc.data() as Map<String, dynamic>),
+              )
+              .toList(),
+        );
+  }
+
+  // 사용자의 완료된 모임 목록 가져오기 (참가한 모임)
+  Stream<List<Meeting>> getUserCompletedMeetings() {
+    final userId = currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return _firestore
+        .collection('bookings')
+        .where('userId', isEqualTo: userId)
+        .where('status', whereIn: ['approved', 'confirmed'])
+        .snapshots()
+        .asyncMap((snapshot) async {
+          List<Meeting> completedMeetings = [];
+
+          for (var doc in snapshot.docs) {
+            final bookingData = doc.data();
+            final meetingId = bookingData['meetingId'] as String;
+
+            try {
+              final meetingDoc = await _meetings.doc(meetingId).get();
+              if (meetingDoc.exists) {
+                final meetingData = meetingDoc.data() as Map<String, dynamic>;
+                final meeting = Meeting.fromMap(meetingId, meetingData);
+
+                // 완료된 모임만 추가
+                if (meeting.status == 'completed' && meeting.isActive) {
+                  completedMeetings.add(meeting);
+                }
+              }
+            } catch (e) {
+              print('완료된 모임 로드 실패: $e');
+            }
+          }
+
+          // 최신 순으로 정렬
+          completedMeetings.sort(
+            (a, b) => b.scheduledDate.compareTo(a.scheduledDate),
+          );
+          return completedMeetings;
+        });
   }
 }

@@ -423,17 +423,68 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4), // 피그마 디자인 radius
                 border: Border.all(color: const Color(0xFF2E2E2E)),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    _getGradientColors(index)[0],
-                    _getGradientColors(index)[1],
-                  ],
-                ),
+                color: const Color(0xFF2E2E2E), // 기본 배경색
               ),
               child: Stack(
                 children: [
+                  // 이미지 표시
+                  if ((meeting.coverImageUrl?.isNotEmpty ?? false) ||
+                      (meeting.imageUrl?.isNotEmpty ?? false))
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.network(
+                        (meeting.coverImageUrl?.isNotEmpty == true)
+                            ? meeting.coverImageUrl!
+                            : meeting.imageUrl!,
+                        width: 76,
+                        height: 76,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(4),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  _getGradientColors(index)[0],
+                                  _getGradientColors(index)[1],
+                                ],
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.image,
+                              color: Colors.white54,
+                              size: 32,
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    // 이미지가 없을 때만 그라데이션 표시
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            _getGradientColors(index)[0],
+                            _getGradientColors(index)[1],
+                          ],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.image,
+                        color: Colors.white54,
+                        size: 32,
+                      ),
+                    ),
                   // D-Day 배지 (왼쪽 상단)
                   Positioned(
                     top: 6,

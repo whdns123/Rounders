@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import '../models/meeting.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../config/booking_policy_config.dart';
 import 'booking_complete_screen.dart';
 import 'refund_info_screen.dart';
 import 'package:portone_flutter/iamport_payment.dart';
 import 'package:portone_flutter/model/payment_data.dart';
+import '../widgets/common_modal.dart';
+import '../config/payment_config.dart';
 
 class BookingPaymentScreen extends StatefulWidget {
   final Meeting meeting;
@@ -22,8 +25,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
 
-  String _selectedPaymentMethod = '';
-  String _selectedCardCompany = '';
   bool _allAgreed = false;
   bool _personalInfoAgreed = false;
   bool _thirdPartyInfoAgreed = false;
@@ -35,9 +36,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     return _nameController.text.isNotEmpty &&
         _phoneController.text.isNotEmpty &&
         _emailController.text.isNotEmpty &&
-        _selectedPaymentMethod.isNotEmpty &&
-        (_selectedPaymentMethod != '카드 결제' ||
-            _selectedCardCompany.isNotEmpty) &&
         _personalInfoAgreed &&
         _thirdPartyInfoAgreed &&
         _paymentServiceAgreed;
@@ -62,7 +60,27 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   @override
   void initState() {
     super.initState();
+    _checkBookingAvailability();
     _loadUserInfo();
+  }
+
+  // 예약 가능 여부 확인
+  void _checkBookingAvailability() {
+    if (!BookingPolicyConfig.canBookMeeting(widget.meeting.scheduledDate)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final deadlineHours =
+            BookingPolicyConfig.bookingDeadlineBeforeMeeting.inHours;
+        ModalUtils.showErrorModal(
+          context: context,
+          title: '예약 마감',
+          description:
+              '죄송합니다. 이 모임은 예약 마감되었습니다.\n모임 시작 ${deadlineHours}시간 전까지만 예약이 가능합니다.',
+          buttonText: '확인',
+        ).then((_) {
+          Navigator.of(context).pop(); // 이전 화면으로 돌아가기
+        });
+      });
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -285,12 +303,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                           ),
                           const SizedBox(height: 36),
 
-                          // 결제 수단
-                          _buildSectionTitle('결제 수단'),
-                          const SizedBox(height: 16),
-                          _buildPaymentMethods(),
-                          const SizedBox(height: 36),
-
                           // 결제 금액
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -330,12 +342,33 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               ),
             ),
 
+            // Payment Info Notice
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Color(0xFF8C8C8C)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '결제 수단은 다음 단계에서 선택할 수 있습니다',
+                      style: TextStyle(
+                        color: Color(0xFF8C8C8C),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // Bottom Button
             Container(
               padding: const EdgeInsets.all(16),
               child: SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: _canProceed ? _processPayment : null,
                   style: ElevatedButton.styleFrom(
@@ -352,7 +385,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     style: TextStyle(
                       color: _canProceed
                           ? const Color(0xFFF5F5F5)
-                          : const Color(0xFF8C8C8C),
+                          : const Color(0xFF111111), // 비활성화 시 어두운 텍스트로 변경
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -427,136 +460,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildPaymentMethods() {
-    final paymentMethods = [
-      {'name': '네이버 페이', 'value': '네이버 페이'},
-      {'name': '카카오 페이', 'value': '카카오 페이'},
-      {'name': '토스 페이', 'value': '토스 페이'},
-      {'name': '카드 결제', 'value': '카드 결제'},
-    ];
-
-    return Column(
-      children: [
-        ...paymentMethods
-            .map(
-              (method) => Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedPaymentMethod = method['value']!;
-                        });
-                      },
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _selectedPaymentMethod == method['value']
-                                ? const Color(0xFFF44336)
-                                : const Color(0xFF8C8C8C),
-                            width: 1,
-                          ),
-                          color: _selectedPaymentMethod == method['value']
-                              ? const Color(0xFFF44336)
-                              : Colors.transparent,
-                        ),
-                        child: _selectedPaymentMethod == method['value']
-                            ? const Center(
-                                child: Icon(
-                                  Icons.circle,
-                                  size: 8,
-                                  color: Color(0xFFF5F5F5),
-                                ),
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      method['name']!,
-                      style: const TextStyle(
-                        color: Color(0xFFF5F5F5),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .toList(),
-
-        // 카드사 선택 (카드 결제 선택시에만 표시)
-        if (_selectedPaymentMethod == '카드 결제') ...[
-          const SizedBox(height: 16),
-          Container(
-            height: 44,
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF8C8C8C)),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedCardCompany.isEmpty
-                    ? null
-                    : _selectedCardCompany,
-                hint: const Text(
-                  '카드사 선택',
-                  style: TextStyle(
-                    color: Color(0xFFEAEAEA),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                isExpanded: true,
-                dropdownColor: const Color(0xFF2E2E2E),
-                icon: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Color(0xFFEAEAEA),
-                ),
-                items:
-                    [
-                      '국민은행',
-                      '신한은행',
-                      '우리은행',
-                      '하나은행',
-                      '삼성카드',
-                      'KB카드',
-                      '롯데카드',
-                      '현대카드',
-                    ].map((String company) {
-                      return DropdownMenuItem<String>(
-                        value: company,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            company,
-                            style: const TextStyle(
-                              color: Color(0xFFEAEAEA),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedCardCompany = newValue ?? '';
-                  });
-                },
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildRefundPolicy() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,8 +493,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             ),
           ],
         ),
-        const Text(
-          '결제 후 30분 경과 전: 전액 환불\n참가 신청 후 승인이 완료되지 않은 경우: 전액 환불\n참여 확정 모임의 진행일 기준 4일 전까지: 전액 환불\n참여 확정 모임의 진행일 기준 3일 전부터: 환불 불가\n모임 진행 당일에 신청한 경우: 환불 불가',
+        Text(
+          BookingPolicyConfig.getRefundPolicyDescription()
+              .replaceAll('=== 환불 정책 안내 ===\n\n', '')
+              .replaceAll('📌 ', '')
+              .replaceAll('⚠️ ', '')
+              .replaceAll('📞 ', ''),
           style: TextStyle(
             color: Color(0xFFD6D6D6),
             fontSize: 12,
@@ -752,21 +659,23 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               ),
             ),
           ),
-          /* [필수입력] 가맹점 식별코드 - 테스트용 */
-          userCode: 'iamport',
+          /* [필수입력] 가맹점 식별코드 */
+          userCode: PaymentConfig.userCode,
           /* [필수입력] 결제 데이터 */
           data: PaymentData(
-            pg: 'html5_inicis', // KG이니시스
-            payMethod: _getPayMethod(), // 선택된 결제수단
+            pg: PaymentConfig.pg,
+            payMethod: 'card', // 기본 결제 수단
             name: widget.meeting.title, // 모임명
             merchantUid: merchantUid, // 주문번호
-            amount: widget.meeting.price.toInt(), // 결제금액
+            amount: PaymentConfig.getPaymentAmount(
+              widget.meeting.price,
+            ).toInt(),
             buyerName: _nameController.text, // 구매자 이름
             buyerTel: _phoneController.text, // 구매자 연락처
             buyerEmail: _emailController.text, // 구매자 이메일
             buyerAddr: widget.meeting.location, // 구매자 주소
             buyerPostcode: '06018', // 구매자 우편번호
-            appScheme: 'rounders', // 앱 스키마
+            appScheme: PaymentConfig.appScheme,
           ),
           /* [필수입력] 콜백 함수 */
           callback: (Map<String, String> result) {
@@ -775,21 +684,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         ),
       ),
     );
-  }
-
-  String _getPayMethod() {
-    switch (_selectedPaymentMethod) {
-      case '네이버페이':
-        return 'naverpay';
-      case '카카오페이':
-        return 'kakaopay';
-      case '토스페이':
-        return 'tosspay';
-      case '카드 결제':
-        return 'card';
-      default:
-        return 'card';
-    }
   }
 
   void _handlePaymentResult(Map<String, String> result, String bookingNumber) {
@@ -801,6 +695,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           builder: (context) => BookingCompleteScreen(
             meeting: widget.meeting,
             bookingNumber: bookingNumber,
+            paymentAmount: PaymentConfig.getPaymentAmount(widget.meeting.price),
+            userName: _nameController.text,
           ),
         ),
       );
@@ -812,22 +708,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   }
 
   void _showPaymentFailureDialog(String errorMessage) {
-    showDialog(
+    ModalUtils.showErrorModal(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2E2E2E),
-        title: const Text('결제 실패', style: TextStyle(color: Colors.white)),
-        content: Text(
-          errorMessage,
-          style: const TextStyle(color: Color(0xFFD6D6D6)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('확인', style: TextStyle(color: Color(0xFFF44336))),
-          ),
-        ],
-      ),
+      title: '결제 실패',
+      description: errorMessage,
+      buttonText: '확인',
     );
   }
 

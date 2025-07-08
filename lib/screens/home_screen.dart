@@ -13,7 +13,13 @@ import 'mypage_screen.dart';
 import 'host_mypage_screen.dart';
 import '../services/booking_service.dart';
 import '../models/booking.dart';
-import 'booking_cancellation/booking_cancel_step1_screen.dart';
+import '../services/booking_cancellation_service.dart';
+import '../services/iamport_refund_service.dart';
+import '../services/notification_service.dart';
+import '../services/auth_service.dart';
+import '../services/review_service.dart';
+import '../utils/toast_utils.dart';
+import '../widgets/common_modal.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -74,235 +80,46 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildIconButton(Icons.notifications_none),
                     const SizedBox(width: 0),
                     Consumer<AuthService>(
-                      builder: (context, authService, _) => PopupMenuButton(
-                        icon: _buildIconButton(Icons.person_outline),
-                        color: const Color(0xFF2E2E2E),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            child: const Text(
-                              '마이페이지',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () async {
-                              // 실제 사용자의 호스트 권한 확인
-                              Future.microtask(() async {
-                                final user = authService.currentUser;
-                                if (user != null) {
-                                  try {
-                                    // Firestore에서 최신 유저 정보를 가져와 role 확인
-                                    final firestoreService =
-                                        Provider.of<FirestoreService>(
-                                          context,
-                                          listen: false,
-                                        );
-                                    final userInfo = await firestoreService
-                                        .getUserById(user.uid);
-                                    final bool isHost =
-                                        userInfo?.isHost ?? false;
-
-                                    if (context.mounted) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => isHost
-                                              ? const HostMypageScreen()
-                                              : const MypageScreen(),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    // 에러 발생 시 일반 마이페이지로 이동
-                                    if (context.mounted) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              const MypageScreen(),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                          const PopupMenuItem(
-                            enabled: false, // 구분선 역할을 위해 비활성화
-                            height: 1,
-                            child: Divider(
-                              color: Color(0xFF424242),
-                              thickness: 1,
-                            ),
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '모임 만들기',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const HostCreateMeetingScreen(),
-                                  ),
-                                );
-                              });
-                            },
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '샘플 게임 추가',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((
-                                _,
-                              ) async {
-                                try {
-                                  await Provider.of<FirestoreService>(
+                      builder: (context, authService, _) => GestureDetector(
+                        onTap: () async {
+                          // 유저 아이콘 터치 시 바로 마이페이지로 이동
+                          final user = authService.currentUser;
+                          if (user != null) {
+                            try {
+                              // Firestore에서 최신 유저 정보를 가져와 role 확인
+                              final firestoreService =
+                                  Provider.of<FirestoreService>(
                                     context,
                                     listen: false,
-                                  ).addSampleGames();
+                                  );
+                              final userInfo = await firestoreService
+                                  .getUserById(user.uid);
+                              final bool isHost = userInfo?.isHost ?? false;
 
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('샘플 게임 데이터가 추가되었습니다!'),
-                                        backgroundColor: Color(0xFF4CAF50),
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('샘플 게임 추가 실패: $e'),
-                                        backgroundColor: const Color(
-                                          0xFFF44336,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '샘플 장소 추가',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((
-                                _,
-                              ) async {
-                                try {
-                                  final user = authService.currentUser;
-                                  if (user != null) {
-                                    await Provider.of<FirestoreService>(
-                                      context,
-                                      listen: false,
-                                    ).addSampleVenue(user.uid);
-
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('샘플 장소 데이터가 추가되었습니다!'),
-                                          backgroundColor: Color(0xFF4CAF50),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('샘플 장소 추가 실패: $e'),
-                                        backgroundColor: const Color(
-                                          0xFFF44336,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '샘플 예약 추가',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((
-                                _,
-                              ) async {
-                                try {
-                                  final user = authService.currentUser;
-                                  if (user != null) {
-                                    await BookingService().addSampleBookings(
-                                      user.uid,
-                                    );
-
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('샘플 예약 데이터가 추가되었습니다!'),
-                                          backgroundColor: Color(0xFF4CAF50),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('샘플 예약 추가 실패: $e'),
-                                        backgroundColor: const Color(
-                                          0xFFF44336,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '호스트 신청',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (context.mounted) {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const HostApplicationScreen(),
+                                    builder: (context) => isHost
+                                        ? const HostMypageScreen()
+                                        : const MypageScreen(),
                                   ),
                                 );
-                              });
-                            },
-                          ),
-                          PopupMenuItem(
-                            child: const Text(
-                              '로그아웃',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                authService.signOut();
-                              });
-                            },
-                          ),
-                        ],
+                              }
+                            } catch (e) {
+                              // 에러 발생 시 일반 마이페이지로 이동
+                              if (context.mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const MypageScreen(),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        child: _buildIconButton(Icons.person_outline),
                       ),
                     ),
                   ],
@@ -474,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF2E2E2E),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0xFF2E2E2E)),
+            border: Border.all(color: const Color(0xFF1A1A1A)), // gray900
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,22 +310,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     // 배경 이미지
                     Positioned.fill(child: _buildMeetingThumbnail(meeting)),
-                    // 그라데이션 오버레이 (가독성 확보)
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              cardColor.withOpacity(0.8),
-                              cardColor.withOpacity(0.3),
-                              Colors.black.withOpacity(0.6),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
 
                     // 찜하기 버튼
                     Positioned(
@@ -543,13 +344,23 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            '$spotsLeft자리 남았어요!',
-                            style: const TextStyle(
-                              color: Color(0xFFC2C2C2),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              fontFamily: 'Pretendard',
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$spotsLeft자리 남았어요!',
+                              style: const TextStyle(
+                                color: Color(0xFFFFFFFF),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                fontFamily: 'Pretendard',
+                              ),
                             ),
                           ),
                         ],
@@ -564,11 +375,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         meeting.title,
                         style: const TextStyle(
-                          color: Color(0xFFD6D6D6),
+                          color: Color(0xFFE5E5E5), // gray200
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'Pretendard',
                           height: 1.5,
+                          shadows: [
+                            Shadow(
+                              offset: Offset(0, 1),
+                              blurRadius: 3,
+                              color: Colors.black87,
+                            ),
+                            Shadow(
+                              offset: Offset(0, 0),
+                              blurRadius: 6,
+                              color: Colors.black54,
+                            ),
+                          ],
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -599,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 2),
                         Expanded(
                           child: Text(
-                            '${meeting.location} • ${_formatDate(meeting.scheduledDate)}',
+                            '${_extractCafeName(meeting.location)} • ${_formatDate(meeting.scheduledDate)}',
                             style: const TextStyle(
                               color: Color(0xFFD6D6D6),
                               fontSize: 12,
@@ -621,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 4,
-                            vertical: 0,
+                            vertical: 2, // 세로 가운데 정렬을 위한 패딩 추가
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFCC9C5),
@@ -641,7 +464,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 4,
-                            vertical: 0,
+                            vertical: 2, // 세로 가운데 정렬을 위한 패딩 추가
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFEAEAEA),
@@ -660,25 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                         const Spacer(),
 
-                        // 평점
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFD9D9D9),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 1),
-                        Text(
-                          '4.5(${meeting.currentParticipants})',
-                          style: const TextStyle(
-                            color: Color(0xFFD6D6D6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
+                        // 평점 (호스트 리뷰)
+                        _buildRatingWidget(meeting.hostId),
                       ],
                     ),
                   ],
@@ -694,6 +500,97 @@ class _HomeScreenState extends State<HomeScreen> {
   String _formatDate(DateTime date) {
     final weekday = ['일', '월', '화', '수', '목', '금', '토'][date.weekday % 7];
     return '${date.month}.${date.day}($weekday) ${date.hour}시';
+  }
+
+  String _extractCafeName(String location) {
+    // 위치 정보에서 카페 이름만 추출 (괄호 앞부분)
+    // 예: "커피홀릭 (경기 수원시 영통구 번조로149번길 169 1층 커피홀릭)" -> "커피홀릭"
+    final index = location.indexOf('(');
+    if (index != -1) {
+      return location.substring(0, index).trim();
+    }
+    return location.trim();
+  }
+
+  Widget _buildRatingWidget(String hostId) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ReviewService().getHostRatingStats(hostId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Row(
+            children: [
+              const Icon(Icons.star, size: 12, color: Color(0xFFD9D9D9)),
+              const SizedBox(width: 2),
+              Text(
+                '평가중...',
+                style: const TextStyle(
+                  color: Color(0xFFD6D6D6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Row(
+            children: [
+              const Icon(Icons.star, size: 12, color: Color(0xFFD9D9D9)),
+              const SizedBox(width: 2),
+              Text(
+                '0.0(0)',
+                style: const TextStyle(
+                  color: Color(0xFFD6D6D6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+            ],
+          );
+        }
+
+        final stats = snapshot.data!;
+        final averageRating = stats['averageRating'] as double;
+        final totalReviews = stats['totalReviews'] as int;
+
+        if (totalReviews == 0) {
+          return Row(
+            children: [
+              const Icon(Icons.star, size: 12, color: Color(0xFFD9D9D9)),
+              const SizedBox(width: 2),
+              Text(
+                '0.0(0)',
+                style: const TextStyle(
+                  color: Color(0xFFD6D6D6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            const Icon(Icons.star, size: 12, color: Color(0xFFD9D9D9)),
+            const SizedBox(width: 2),
+            Text(
+              '${averageRating.toStringAsFixed(1)}($totalReviews)',
+              style: const TextStyle(
+                color: Color(0xFFD6D6D6),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildMyReservationsSection() {
@@ -755,48 +652,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        // 샘플 데이터 추가 버튼
-                        GestureDetector(
-                          onTap: () async {
-                            try {
-                              await BookingService().addSampleBookings(
-                                user.uid,
-                              );
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('샘플 예약 데이터가 추가되었습니다!'),
-                                    backgroundColor: Color(0xFF4CAF50),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('샘플 데이터 추가 실패: $e'),
-                                    backgroundColor: const Color(0xFFF44336),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2E2E2E),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              '+ 샘플 예약 데이터 추가하기',
-                              style: TextStyle(
-                                color: Color(0xFFF5F5F5),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     );
                   }
@@ -806,57 +661,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   // 예약 모임이 없을 때
                   if (bookings.isEmpty) {
-                    return Column(
-                      children: [
-                        _buildEmptyReservations(),
-                        const SizedBox(height: 16),
-                        // 샘플 데이터 추가 버튼
-                        GestureDetector(
-                          onTap: () async {
-                            try {
-                              await BookingService().addSampleBookings(
-                                user.uid,
-                              );
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('샘플 예약 데이터가 추가되었습니다!'),
-                                    backgroundColor: Color(0xFF4CAF50),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('샘플 데이터 추가: $e'),
-                                    backgroundColor: const Color(0xFFF44336),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2E2E2E),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Center(
-                              child: Text(
-                                '+ 샘플 예약 데이터 추가하기',
-                                style: TextStyle(
-                                  color: Color(0xFFF5F5F5),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
+                    return Column(children: [_buildEmptyReservations()]);
                   }
 
                   // 예약 모임이 있을 때
@@ -895,7 +700,6 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 1.43,
           ),
         ),
-        SizedBox(height: 20),
       ],
     );
   }
@@ -992,38 +796,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
 
         // 마이페이지 이동 버튼 (전체보기 상태에서만)
-        if (_showAllBookings && bookings.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF44336),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MypageScreen()),
-                );
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFF5F5F5),
-              ),
-              child: const Text(
-                '예약 내역 전체 보기',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Pretendard',
-                ),
-              ),
-            ),
-          ),
-        ],
-
-        const SizedBox(height: 20),
+        if (_showAllBookings && bookings.isNotEmpty) ...[],
       ],
     );
   }
@@ -1147,14 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  color: const Color(0xFF2E2E2E),
-                  child: const Icon(
-                    Icons.event,
-                    color: Color(0xFF8C8C8C),
-                    size: 32,
-                  ),
-                ),
+                child: _buildBookingThumbnail(meeting),
               ),
             ),
 
@@ -1170,62 +936,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // 상태 태그 (Figma 디자인과 동일한 색상)
+                      // 상태 태그 (모든 BookingStatus 고려)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 4,
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: booking.status == BookingStatus.confirmed
-                              ? const Color(0xFFF44336) // 예약 확정: 빨간색
-                              : booking.status == BookingStatus.cancelled
-                              ? const Color(0xFFEAEAEA) // 취소: 회색
-                              : const Color(0xFFFCC9C5), // 인원 모집 중: 연한 빨간색
+                          color: _getBookingStatusColor(booking.status),
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: Text(
                           booking.statusText,
                           style: TextStyle(
-                            color: booking.status == BookingStatus.confirmed
-                                ? const Color(0xFFEAEAEA) // 예약 확정: 흰색 텍스트
-                                : booking.status == BookingStatus.cancelled
-                                ? const Color(0xFF4B4B4B) // 취소: 진한 회색 텍스트
-                                : const Color(0xFFF44336), // 인원 모집 중: 빨간색 텍스트
+                            color: _getBookingStatusTextColor(booking.status),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                             fontFamily: 'Pretendard',
                           ),
                         ),
                       ),
-
-                      // 취소 버튼 (취소되지 않은 예약에만 표시)
-                      if (booking.status != BookingStatus.cancelled)
-                        GestureDetector(
-                          onTap: () => _showCancelBooking(booking),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: const Color(0xFF8C8C8C),
-                                width: 1,
-                              ),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '취소',
-                              style: TextStyle(
-                                color: Color(0xFF8C8C8C),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                fontFamily: 'Pretendard',
-                              ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
 
@@ -1244,7 +974,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  // 위치와 시간 (Figma 디자인과 동일)
+                  // 장소와 시간 (주소는 제거하고 장소 이름만 표시)
                   Row(
                     children: [
                       Icon(
@@ -1257,7 +987,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 2),
                       Expanded(
                         child: Text(
-                          '${meeting.location} • ${_formatDateTime(booking.bookingDate)}',
+                          '${_extractCafeName(meeting.location)} • ${_formatDateTime(booking.bookingDate)}',
                           style: TextStyle(
                             color: booking.status == BookingStatus.cancelled
                                 ? const Color(0xFF6E6E6E)
@@ -1287,15 +1017,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${dateTime.month}.${dateTime.day}($weekday) ${dateTime.hour}시 ${dateTime.minute.toString().padLeft(2, '0')}분';
   }
 
-  void _showCancelBooking(Booking booking) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BookingCancelStep1Screen(booking: booking),
-      ),
-    );
-  }
-
   // 미팅 카드 썸네일
   Widget _buildMeetingThumbnail(Meeting meeting) {
     String? imageUrl = meeting.coverImageUrl;
@@ -1308,15 +1029,100 @@ class _HomeScreenState extends State<HomeScreen> {
       return Container(color: Colors.transparent);
     }
 
+    return Stack(
+      children: [
+        Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade700),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(color: Colors.grey.shade900);
+          },
+        ),
+        // 텍스트 가독성을 위한 오버레이
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0x66000000), // #000000 40% 투명도
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 예약 카드 썸네일 (기본 아이콘 포함)
+  Widget _buildBookingThumbnail(Meeting meeting) {
+    String? imageUrl = meeting.coverImageUrl;
+    if ((imageUrl == null || imageUrl.isEmpty) &&
+        meeting.imageUrls.isNotEmpty) {
+      imageUrl = meeting.imageUrls.first;
+    }
+
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(
+        color: const Color(0xFF2E2E2E),
+        child: const Icon(Icons.event, color: Color(0xFF8C8C8C), size: 32),
+      );
+    }
+
     return Image.network(
       imageUrl,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade700),
+      errorBuilder: (_, __, ___) => Container(
+        color: const Color(0xFF2E2E2E),
+        child: const Icon(Icons.event, color: Color(0xFF8C8C8C), size: 32),
+      ),
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) return child;
-        return Container(color: Colors.grey.shade900);
+        return Container(
+          color: const Color(0xFF2E2E2E),
+          child: const CircularProgressIndicator(
+            color: Color(0xFF8C8C8C),
+            strokeWidth: 2,
+          ),
+        );
       },
     );
+  }
+
+  // 예약 상태별 배경색 반환
+  Color _getBookingStatusColor(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.confirmed:
+        return const Color(0xFFF44336); // 예약 확정: 빨간색
+      case BookingStatus.pending:
+        return const Color(0xFFFCC9C5); // 승인 대기중: 연한 빨간색
+      case BookingStatus.approved:
+        return const Color(0xFFF44336); // 승인됨: 빨간색
+      case BookingStatus.cancelled:
+        return const Color(0xFFEAEAEA); // 취소: 회색
+      case BookingStatus.completed:
+        return const Color(0xFFF44336); // 완료: 빨간색
+      case BookingStatus.rejected:
+        return const Color(0xFF9E9E9E); // 거절됨: 진한 회색
+    }
+  }
+
+  // 예약 상태별 텍스트색 반환
+  Color _getBookingStatusTextColor(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.confirmed:
+        return const Color(0xFFEAEAEA); // 예약 확정: 흰색 텍스트
+      case BookingStatus.pending:
+        return const Color(0xFFF44336); // 승인 대기중: 빨간색 텍스트
+      case BookingStatus.approved:
+        return const Color(0xFFEAEAEA); // 승인됨: 흰색 텍스트
+      case BookingStatus.cancelled:
+        return const Color(0xFF4B4B4B); // 취소: 진한 회색 텍스트
+      case BookingStatus.completed:
+        return const Color(0xFFEAEAEA); // 완료: 흰색 텍스트
+      case BookingStatus.rejected:
+        return const Color(0xFFEAEAEA); // 거절됨: 흰색 텍스트
+    }
   }
 }
 
@@ -1354,23 +1160,14 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
 
       if (mounted) {
         final isFavorite = favoritesProvider.isFavorite(widget.meetingId);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isFavorite ? '찜 목록에 추가되었습니다' : '찜 목록에서 제거되었습니다'),
-            backgroundColor: const Color(0xFF2E2E2E),
-            duration: const Duration(seconds: 2),
-          ),
+        ToastUtils.showSuccess(
+          context,
+          isFavorite ? '찜 목록에 추가되었습니다' : '찜 목록에서 제거되었습니다',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('오류가 발생했습니다'),
-            backgroundColor: Color(0xFFF44336),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        ToastUtils.showError(context, '오류가 발생했습니다');
       }
     } finally {
       if (mounted) {

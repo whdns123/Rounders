@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# 키스토어 보안 파일
+key.properties
+app/upload-keystore.jks

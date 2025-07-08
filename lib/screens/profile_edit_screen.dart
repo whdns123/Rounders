@@ -65,13 +65,21 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _phoneController = TextEditingController(text: widget.user.phone);
     _jobController = TextEditingController(text: widget.user.job ?? '');
     _majorController = TextEditingController(text: widget.user.major ?? '');
-    _selectedGender = widget.user.gender.isNotEmpty
+
+    // 사용자 데이터가 옵션 리스트에 있는지 확인하고, 없으면 기본값 사용
+    _selectedGender =
+        widget.user.gender.isNotEmpty &&
+            _genderOptions.contains(widget.user.gender)
         ? widget.user.gender
         : _genderOptions[0];
-    _selectedAgeGroup = widget.user.ageGroup.isNotEmpty
+    _selectedAgeGroup =
+        widget.user.ageGroup.isNotEmpty &&
+            _ageGroupOptions.contains(widget.user.ageGroup)
         ? widget.user.ageGroup
         : _ageGroupOptions[0];
-    _selectedLocation = widget.user.location.isNotEmpty
+    _selectedLocation =
+        widget.user.location.isNotEmpty &&
+            _locationOptions.contains(widget.user.location)
         ? widget.user.location
         : _locationOptions[0];
   }
@@ -246,7 +254,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       // 저장 버튼
                       SizedBox(
                         width: double.infinity,
-                        height: 48,
+                        height: 52,
                         child: ElevatedButton(
                           onPressed: _saveProfile,
                           style: ElevatedButton.styleFrom(
